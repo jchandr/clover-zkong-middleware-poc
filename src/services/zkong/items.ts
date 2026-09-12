@@ -22,8 +22,9 @@ export interface ZkongItem {
 
 /**
  * Map Clover item (price in cents) → Zkong item format.
- * Zkong expects price as string BigDecimal; we send cents string via unitName=0
- * so Zkong divides by 100 internally, preserving exact Clover value.
+ * Zkong stores sale price as integer cents when unitName=0
+ * (Zkong divides by 100 only for tag rendering). We send cents
+ * string directly so Clover 3600 ($36.00) → Zkong "3600".
  * For POC: barCode = sku || code || cloverItem.id
  */
 export function mapCloverToZkongItem(
@@ -51,7 +52,7 @@ export async function batchImportToZkong(
     merchantId: config.zkong.merchantId,
     agencyId: config.zkong.agencyId,
     storeId: opts?.storeId ?? "",
-    unitName: 0, // tell Zkong price is in cents (divided by 100)
+    unitName: 1, // keep cents verbatim; no implicit /100 (avoids 4200 → 42 round-trip)
     itemList: items,
   };
 
@@ -76,14 +77,16 @@ export async function batchDeleteFromZkong(
 ): Promise<void> {
   if (barCodes.length === 0) return;
 
-  const res = await zkongClient.post<{
+  // Per 3.2 spec: DELETE /zk/item/batchDeleteItem, body {storeId?, list: string[500]}
+  // Empty storeId deletes from all stores under the merchant.
+  const body: Record<string, unknown> = { list: barCodes };
+  if (storeId) body.storeId = storeId;
+
+  const res = await zkongClient.delete<{
     success: boolean;
     code: number;
     message: string;
-  }>("/zk/item/batchDeleteItem", {
-    storeId: storeId ?? "",
-    list: barCodes,
-  });
+  }>("/zk/item/batchDeleteItem", { data: body } as never);
 
   if (!res.data.success) {
     throw new Error(

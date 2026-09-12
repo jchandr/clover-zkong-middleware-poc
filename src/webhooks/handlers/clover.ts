@@ -94,6 +94,9 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
   const { getCloverItem } = await import("../../services/clover/client");
   const { batchImportToZkong, batchDeleteFromZkong, mapCloverToZkongItem } =
     await import("../../services/zkong/items");
+  const { ensureDefaultStore } = await import("../../db/models/store");
+  const { upsertItemMap, findByCloverId } = await import("../../db/models/item-map");
+  const { logSync } = await import("../../db/models/sync-log");
 
   const merchants = body.merchants ?? {};
   for (const [merchantId, updates] of Object.entries(merchants)) {
@@ -101,7 +104,6 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
       const objectId: string = u.objectId ?? "";
       const type: string = u.type ?? "";
 
-      // Only handle Inventory items (I:<id>), ignore other types (O:, P:, etc.)
       if (!objectId.startsWith("I:")) {
         console.log(`[sync] skipping non-inventory objectId=${objectId}`);
         continue;
@@ -112,27 +114,73 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
       if (type === "DELETE") {
         console.log(`[sync] Clover DELETE ${merchantId} ${itemId} -> Zkong`);
         try {
-          // For DELETE we don't have item data, so delete by any barCode that matches this Clover id.
-          // For POC: try id as barCode, and sku/code variants will be covered by item_map lookup once implemented.
-          await batchDeleteFromZkong([itemId]);
+          const storeId = await ensureDefaultStore(merchantId);
+          const mapped = await findByCloverId(storeId, itemId);
+          const barCodes = mapped ? [mapped.zkong_barcode] : [itemId];
+          await batchDeleteFromZkong(barCodes);
+          if (mapped) {
+            const { getPool } = await import("../../db/connection");
+            await getPool().query("DELETE FROM item_map WHERE id=$1", [mapped.id]);
+            await logSync({ item_map_id: mapped.id, direction: "clover->zkong", action: "DELETE", reason: `Clover ${itemId} deleted` });
+          }
         } catch (e) {
           console.error(`[sync] Zkong delete failed for ${itemId}:`, (e as Error).message);
         }
         continue;
       }
 
-      // CREATE or UPDATE: fetch full item, then upsert to Zkong
       if (type === "CREATE" || type === "UPDATE") {
         try {
           console.log(`[sync] fetching Clover item ${merchantId}/${itemId}`);
           const item = await getCloverItem(merchantId, itemId);
           console.log(`[sync] fetched: ${item.name} price=${item.price} sku=${item.sku ?? ""} code=${item.code ?? ""}`);
           const zkongItem = mapCloverToZkongItem(item);
+
+          // Echo detection: if this webhook was caused by our own Zkong→Clover push, skip
+          const storeId = await ensureDefaultStore(merchantId);
+          const existing = await findByCloverId(storeId, itemId);
+          if (existing && existing.last_pushed_price === item.price) {
+            console.log(`[sync] echo detected for ${itemId} price=${item.price}, skipping Zkong push`);
+            continue;
+          }
+
           console.log(`[sync] pushing to Zkong barCode=${zkongItem.barCode}`);
           await batchImportToZkong([zkongItem]);
+
+          // Persist standard_price / last_pushed_price for future promo + echo handling
+          // If a promo is active, this is a pending standard_price update (don't overwrite live promo price)
+          if (existing?.promo_active) {
+            await upsertItemMap({
+              store_id: storeId,
+              clover_item_id: itemId,
+              zkong_barcode: zkongItem.barCode,
+              standard_price: item.price,
+              last_pushed_price: existing.last_pushed_price,
+              active_promo_id: existing.active_promo_id,
+              active_promo_price: existing.active_promo_price,
+              promo_active: true,
+              zkong_item_id: existing.zkong_item_id,
+              last_zkong_update_time: existing.last_zkong_update_time,
+            });
+            await logSync({ item_map_id: existing.id, direction: "clover->zkong", action: "UPDATE_PENDING_PROMO", from_price: existing.standard_price, to_price: item.price, reason: "merchant edited base price while promo active" });
+            console.log(`[sync] queued standard_price update for ${itemId} (promo active)`);
+          } else {
+            const row = await upsertItemMap({
+              store_id: storeId,
+              clover_item_id: itemId,
+              zkong_barcode: zkongItem.barCode,
+              standard_price: item.price,
+              last_pushed_price: item.price,
+              active_promo_id: null,
+              active_promo_price: null,
+              promo_active: false,
+              zkong_item_id: null,
+              last_zkong_update_time: null,
+            });
+            await logSync({ item_map_id: row.id, direction: "clover->zkong", action: type, from_price: existing?.standard_price ?? null, to_price: item.price, reason: `Clover ${type} ${itemId}` });
+          }
         } catch (e) {
           const msg = (e as Error).message;
-          // 404 means item was deleted between webhook and fetch — treat as delete
           if (msg.includes("404") || msg.includes("Not Found")) {
             console.warn(`[sync] item ${itemId} not found (likely deleted), skipping`);
           } else {

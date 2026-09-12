@@ -40,6 +40,12 @@ async function main(): Promise<void> {
       `[middleware] webhook endpoint: POST http://localhost:${config.port}/webhooks/clover`
     );
   });
+
+  // Start Zkong → Clover poller (only if Zkong creds are present)
+  if (config.zkong.account && config.zkong.password) {
+    const { startZkongPoller } = await import("./polling/zkong-poll");
+    startZkongPoller();
+  }
 }
 
 main().catch((err) => {

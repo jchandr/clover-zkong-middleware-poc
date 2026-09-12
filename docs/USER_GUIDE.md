@@ -2,15 +2,15 @@
 
 This guide explains how to use the POC as it exists today, what each Zkong price field means, and what is still one-way.
 
-## Current sync direction (important)
+## Current sync direction
 
 | Direction | Status | How it works |
 |-----------|--------|--------------|
-| **Clover → Zkong** | **Live** | Webhook `I:<id> CREATE/UPDATE` → `GET /v3/merchants/{mId}/items/{id}` → `POST /zk/item/batchImportItem` |
-| **Zkong → Clover** | **Not yet implemented** | Planned as polling (`POST /zk/erp/item/list` diff by `updateTime` + `strategy/list` for promos). Manual edits in Zkong Dashboard (like your `9500`) will **not** appear in Clover until this leg is built. |
-| **Zkong promo strategy → Clover `price`** | **Designed, not built** | Requires `item_map` standard/promo state + polling `strategy/list` — deferred until empirical test of which Zkong mechanism actually changes the polled `price`. |
+| **Clover → Zkong** | **Live** | Webhook `I:<id> CREATE/UPDATE` → `GET /v3/merchants/{mId}/items/{id}` (`CLOVER_API_TOKEN`) → `POST /zk/item/batchImportItem` with `unitName:1`, `price` as cents string (`3600` = $36.00), `barCode=sku‖code‖id`; persisted in `item_map` (`standard_price`/`last_pushed_price`) |
+| **Zkong → Clover** | **Live** | Polling `POST /zk/erp/item/list` (paginated 50, every `ZKONG_POLL_INTERVAL_MS`) → `zkongPriceToCents` (handles `"4400"` as 4400 and legacy `"42.00"` as 4200) → `PUT /v3/merchants/{mId}/items/{id}` (`CLOVER_API_TOKEN`); echo check via `last_pushed_price` prevents ping-pong |
+| **Zkong promo strategy → Clover `price`** | **Designed, deferred** | Needs `item_map` `promo_active` + polling `strategy/list` — deferred until empirical test of `activity` vs `repricingList` vs `proStartTime` determines which changes the polled `price` |
 
-**So your test is expected:** changing `Sale price: 9500` in `esl-eu.zkong.com/productmanager/...` stays in Zkong only for now. It will not update `GAAC1D37ZZDV1` in Clover until the polling leg lands.
+**So your `9500` test now flows back:** editing `Sale price: 9500` (cents) in Zkong at `esl-eu.zkong.com/productmanager/.../209683266...` → next poll (≤ `ZKONG_POLL_INTERVAL_MS`) → Clover `GAAC1D37ZZDV1` price becomes `9500` ($95.00). Earlier one-way limitation is lifted.
 
 ## How to use (Clover → Zkong flow)
 
@@ -55,11 +55,11 @@ PGPASSWORD=postgres psql -h localhost -U postgres -d clover_zkong -c "SELECT clo
 
 ## Price fields — what they mean
 
-Zkong `Specification` shows three price columns. Only **Sale price** is driven by Clover today.
+Zkong `Specification` shows three price columns. **Sale price** is now synced both ways, cent-based.
 
 | Zkong field | API field | Meaning on ESL tag | Current middleware mapping |
 |-------------|-----------|-------------------|----------------------------|
-| **Sale price** | `price` | The price actually charged and displayed large on the tag. This is the *current* price. | `Clover.price` (cents, integer) → `Zkong.price` as string with `unitName:0` (Zkong divides by 100). Example: Clover `5000` → Zkong `5000` → tag shows `50.00`. Your `9500` edit stays as Zkong-only until the reverse sync is built. |
+| **Sale price** | `price` | The price actually charged and displayed large on the tag. This is the *current* price. | **Cent-based both ways** with `unitName:1` (no implicit `/100`): Clover `3600` ($36.00) ↔ Zkong `"3600"`; Zkong `"4400"` ↔ Clover `4400` ($44.00). Legacy `"42.00"` is handled as `4200`. Fixed from `unitName:0` which caused `4200↔42` and `4400→440000` loops. |
 | **Original price** | `originalPrice` | MSRP / reference price, usually shown smaller and crossed out next to Sale price (e.g. “Was $65.00”). Used for “discount” visuals. | **Not mapped** — left empty (`Please enter` in your screenshot). Clover has no equivalent (`cost` is wholesale, not MSRP). Could be filled later from `Clover.cost` or a fixed offset if you need it. Template must be configured to show it, otherwise empty is fine. |
 | **Member price** | `memberPrice` | Loyalty/member card price, secondary tier shown only to members. | **Not mapped** — left empty. Would be driven by Zkong `strategy` promo `fieldValues.memberPrice` or a future Clover loyalty source. |
 
@@ -72,6 +72,6 @@ Zkong `Specification` shows three price columns. Only **Sale price** is driven b
 
 ## Known limitations (POC)
 
-- One-way only (Clover → Zkong). Zkong → Clover polling and the `item_map` promo state (`standard_price`/`last_pushed_price`/`promo_active`) are designed but not yet wired.
-- Single Clover merchant (`GAAC1D37ZZDV1`) → single logical store. Store-specific pricing (`storeId` scoping) is schema-ready but not yet routed.
-- No polling-interval lag to document yet — will be documented once the Zkong poll is implemented.
+- **Single Clover merchant** (`GAAC1D37ZZDV1`, app `34WZ9HQM8M0G0`) → single logical store. Store-specific pricing (`storeId` scoping) is schema-ready (`stores` table, `store_id` FK) but not yet routed per-store; merchant-level `storeId=""` is used.
+- **Polling lag:** Zkong → Clover changes appear after next `ZKONG_POLL_INTERVAL_MS` (default 5 min, set `60000` in `.env` for 1-min feedback during POC).
+- **Promo preservation:** `item_map.standard_price` correctly queues Clover edits made while a promo is active (`UPDATE_PENDING_PROMO`), but full `strategy` scheduling (auto-restore via `strategy/list` cron) is still deferred pending the empirical test.

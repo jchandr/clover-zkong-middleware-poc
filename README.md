@@ -251,18 +251,17 @@ cloverPosDemo/
 
 | Feature | Status |
 |---------|--------|
-| Clover webhook receiver (`/webhooks/clover`) | ✅ Done + verified |
-| `verificationCode` handshake | ✅ Done |
-| `X-Clover-Auth` header verification (constant-time) | ✅ Done |
-| Fail-closed if `CLOVER_AUTH_CODE` unset | ✅ Done |
-| Docker Compose (middleware + cloudflared) | ✅ Built |
-| Custom cloudflared image with shell | ✅ Done |
-| Entrypoint: `TUNNEL_TOKEN` → forward, else idle | ✅ Done |
-| Cloudflare tunnel DNS routing | 📋 Manual step (one-time) |
-| Clover webhook registration | 📋 Manual step |
-| Zkong auth client (RSA login) | ⏳ Next |
-| `item_map` / `stores` SQLite schema | ⏳ Planned |
-| Zkong sync engine (poll + push) | ⏳ Planned |
+| Clover webhook receiver (`/webhooks/clover`) | ✅ Live — `GAAC1D37ZZDV1` `I:*` `UPDATE/DELETE` verified via `clokong.fullform.one` |
+| `verificationCode` + `X-Clover-Auth` (constant-time, fail-closed) | ✅ Live — `71b6...`/`6712...` |
+| Clover → Zkong push (`GET /items/{id}` → `POST /zk/item/batchImportItem`, cent-based `unitName:1`, `barCode=sku‖code‖id`) | ✅ Live — `500000` → `batchImportItem ok` verified |
+| Clover DELETE → Zkong (`DELETE /zk/item/batchDeleteItem`) | ✅ Live — fixed `POST`→`DELETE`, `10009` resolved |
+| Echo prevention + `item_map` persistence (`standard_price`/`last_pushed_price`/`promo_active`) | ✅ Live — Postgres `item_map` |
+| Zkong auth (RSA `getErpPublicKey` → `login`, 7d cache, 401-retry) | ✅ Live — `VensweGlobalLLC`/`1786427294219` verified on `esl-eu.zkong.com` |
+| Zkong → Clover poller (`erp/item/list` paginated → `PUT /items/{id}`) | ✅ Live — cent parse handles `4400`/`42.00`, interval `ZKONG_POLL_INTERVAL_MS` |
+| Postgres (`db:5432`, `pgdata`, `POSTGRES_*` in `.env`) | ✅ Live — `psql -h localhost -U postgres -d clover_zkong` |
+| Docker Compose (middleware + db + cloudflared on `poc-net`) | ✅ Live |
+| Cloudflare Tunnel (`clokong.fullform.one` → `middleware:3000`) | ✅ Live — `TUNNEL_TOKEN` in `cloudflared/.env` |
+| Promo `strategy` → Clover `price` preservation | 📋 Designed, deferred (needs empirical `activity` vs `repricingList` test) |
 
 ---
 

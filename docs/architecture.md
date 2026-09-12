@@ -1,13 +1,11 @@
 # Clover POS <-> Zkong ESL Cloud Middleware
 
 ## Status
-Architecture finalized based on Clover public API docs and Zkong's own API documentation
-(`Zkong API 4.3.docx`, `API-Integration-overview.docx`, Postman collection) found in
-`knowledge_base/`. Ready to move into implementation.
+Implementation in progress — Clover → Zkong (webhook → `batchImportItem`, cent-based) and Zkong → Clover (polling `erp/item/list` → `PUT /items/{id}`) are live and verified end-to-end (including `DELETE` and the `4200↔42` cent/ dollar round-trip fix). Prices are cent-based both ways (`unitName:1`, `price` as cents string, no implicit `/100`). Doc sources: `Zkong API 4.3.docx`, `API-Integration-overview.docx`, Postman collection in `knowledge_base/`.
 
 ## Goal
 A Node.js/TypeScript middleware that keeps product catalog, prices, and inventory in sync
-between Clover POS and Zkong ESL Cloud, running locally/in Docker.
+between Clover POS and Zkong ESL Cloud, running locally/in Docker with Postgres and Cloudflare Tunnel.
 
 ---
 
@@ -56,30 +54,17 @@ user has credentials for, `https://esl-eu.zkong.com/template/merchantTemplate`).
 4. Send `Authorization: <token>` header on every subsequent request
 5. On `401`, re-login and retry (no documented fixed token TTL; treat as reactive re-auth)
 
-### Clover -> Zkong (push)
-- `POST /zk/item/batchImportItem`
-  - Upsert semantics keyed on `barCode`
-  - Up to 20,000 items per request
-  - Required fields per item: `barCode`, `attrCategory`, `attrName` (plus `merchantId`,
-    `agencyId` at the request level)
-  - Price fields: `originalPrice`, `price`, `memberPrice`
-  - `emptyNeedDelete` query param: `0` = keep original value when new field is empty,
-    `1` = overwrite with empty (default `1`) -> **we must always send full item payloads**,
-    not partial diffs, or we risk blanking fields we didn't intend to touch.
-  - `storeId` empty -> writes to merchant-level product list; `storeId` set -> writes to
-    that store only. `externalStoreId` + `useExternalStoreId=1` supported as an alternative,
-    but the external store ID must already exist in Zkong.
-  - Response is synchronous success/fail (per item and overall) -- this confirms the write
-    landed in Zkong's DB, not that the physical tag has re-rendered yet.
-- `POST /zk/item/batchDeleteItem` -- remove items by barcode.
+### Clover -> Zkong (push) — live, verified
+- `POST /zk/item/batchImportItem` — upsert keyed on `barCode`, `unitName:1` (cent passthrough, no implicit `/100`)
+  - Up to 20,000 items per request. Required: `barCode`, `attrCategory`, `attrName` (+ `merchantId`/`agencyId`)
+  - Price mapping (live): `Clover.price` (cents integer, e.g. `3600` = $36.00) → `Zkong.price` as cents string `"3600"` with `unitName:1`. Display: Zkong Dashboard `Sale price` shows `3600` (cent-based, as you expect: `4400` → $44.00). Earlier `unitName:0` (`/100`) caused the `4200↔42` loop — fixed by switching to `1` and polling as `parseInt(cents)`.
+  - `emptyNeedDelete` default `1` → always send full item payloads. `storeId=""` → merchant-level list (POC); real `storeId` when store-scoped.
+- `DELETE /zk/item/batchDeleteItem` with `{"list":[barCode]}` (+ optional `storeId`) — fixed from `POST` (was returning `10009` param error); omits `storeId` when empty to delete from all stores.
 
-### Zkong -> Clover (poll, since no webhook exists)
-- `POST /zk/erp/item/list` (paginated, supports `storeId`/`externalStoreId`) -- each item
-  includes `updateTime`. This is the primary polling target: track last-seen `updateTime`
-  per barcode and diff on each poll cycle to detect changes made directly in the Zkong
-  console, then push those deltas to Clover.
-- `POST /zk/item/getItemByBarCodeAndExternalStoreId` -- single-item lookup, useful for
-  targeted verification/spot checks.
+### Zkong -> Clover (poll, since no webhook exists) — live, verified
+- `POST /zk/erp/item/list?page=&size=50` (paginated) — each item has `price` (cents string, e.g. `"4400"`) + `updateTime`. Poller `src/polling/zkong-poll.ts:1` diffs by `barCode` + `last_zkong_update_time`/`last_pushed_price`, handles both `"4400"` and legacy `"42.00"` (integer `→ parseInt`, decimal `→ *100` heuristic), then `PUT /v3/merchants/{mId}/items/{id} {price: cents}` via `CLOVER_API_TOKEN`.
+- `POST /zk/item/getItemByBarCodeAndExternalStoreId` — single-item lookup for spot checks.
+- Loop fix: poller now treats Zkong's `"42"` as `4200` only when it has a decimal (`"42.00"`); plain `"4400"` stays `4400` — eliminates the `4200→42→42` corruption and the `4400→440000` overshoot.
 
 ### Reconciliation / audit
 - `POST /zk/integratedLog/integratedLogPage` -- filterable by `startTime`, `endTime`,
@@ -394,11 +379,11 @@ Clover POS                          Middleware (Node.js/TS)                  Zko
                                      └──────────────────────┘
                                               │
                                               ▼
-                                     ┌──────────────────┐
-                                     │  SQLite (state):  │
-                                     │  - last updateTime │
-                                     │    per barcode     │
-                                     │  - sync log/audit  │
+                                      ┌──────────────────┐
+                                     │  Postgres (state): │
+                                     │  db:5432 clover_zkong │
+                                     │  stores, item_map, │
+                                     │  sync_log          │
                                      └──────────────────┘
 ```
 
@@ -414,22 +399,12 @@ Clover POS                          Middleware (Node.js/TS)                  Zko
 | Tag hardware health (optional) | Middleware self-check | Polling (low frequency) | `POST /zk/erp/esl/list` / `adminBusinessInfoList` |
 
 ### Design implications
-- **No partial payloads to Zkong.** Because `emptyNeedDelete` defaults to overwrite-with-empty,
-  every `batchImportItem` call must include the full known state of each item, not just the
-  changed field.
-- **Idempotency key:** `barCode` is the natural dedup/upsert key on the Zkong side; Clover's
-  `itemId`/SKU needs to be mapped to `barCode` consistently (mapping table in local DB).
-  Zkong SKU field is `productSku`, but the actual bind/upsert key throughout the API is
-  `barCode` -- keep this straight in the data model to avoid create-vs-update ambiguity.
-- **Conflict resolution:** last-write-wins by timestamp. Since Zkong's `updateTime` is
-  authoritative for that side and Clover has its own webhook timestamp, store both and log
-  conflicts rather than silently dropping one side's change.
-- **Re-auth handling:** wrap all Zkong calls with a 401 -> re-login -> retry-once pattern
-  (token TTL is undocumented).
-- **No async confirmation of physical tag render.** If we need to know a tag actually
-  displayed the update (not just that Zkong's DB accepted it), that requires a follow-up
-  poll of `/zk/erp/esl/list` for that barcode's `lastCommunicationTime`/`state` -- treat
-  as optional/future scope, not part of MVP sync loop.
+- **No partial payloads to Zkong.** `emptyNeedDelete=1` → always send full item payloads.
+- **Idempotency key:** `barCode = sku || code || cloverItem.id` (mapped in `src/services/zkong/items.ts:mapCloverToZkongItem`) — `barCode` is the upsert key; `productSku` is separate. Keep them distinct to avoid create-vs-update ambiguity.
+- **Price is cent-based both ways.** Clover `price` (integer cents) ↔ Zkong `price` (cents string) with `unitName:1` (no implicit `/100`). Poller handles legacy `"42.00"` dollars as `4200` cents, but normal `"4400"` stays `4400`. This fixed both `4200↔42` and `4400→440000` bugs.
+- **Echo loop:** `last_pushed_price` comparison in the webhook handler prevents `Clover→Zkong→Clover` ping-pong; `item_map` persists `standard_price`/`last_pushed_price`/`promo_active` for that.
+- **Re-auth:** Zkong `Authorization` header with `401 → clear → getErpPublicKey → login → retry-once` (`src/services/zkong/client.ts:1`), token TTL 7 days per 2.2.
+- **No tag render confirmation.** Polling `/zk/erp/esl/list` for `lastCommunicationTime`/`state` is still future scope.
 
 ---
 
@@ -439,142 +414,64 @@ The sections below reflect what has actually been built and verified so far, dis
 the target project structure/dependencies (still planned, not yet all implemented) further
 down.
 
-### What's implemented and verified
+### What's implemented and verified (live)
 
-- **Middleware skeleton** (`src/`): Express server with `GET /health` and
-  `POST /webhooks/clover`. Boots via `npm run build && npm start` (or `npm run dev`).
-  Verified: `npm run typecheck` and `npm run build` pass; manual smoke test of both routes
-  confirmed correct responses (see webhook verification testing below).
-- **Clover webhook verification** (`src/webhooks/handlers/clover.ts`,
-  `src/config/env.ts`): implemented per Clover's actual documented mechanism (confirmed by
-  extracting the rendered doc page's embedded JSON, since `docs.clover.com/docs/webhooks`
-  truncates the relevant section on normal fetch) -- Clover uses a **static shared value**,
-  not a per-request HMAC signature:
-  - One-time callback URL verification: Clover POSTs a `verificationCode` in the body when
-    the webhook URL is first configured in the Dashboard. Handler detects this
-    (`typeof body.verificationCode === "string"`), logs it, returns 200 without requiring
-    auth (Clover doesn't send the auth header on this first request).
-  - Every subsequent real webhook carries a static `X-Clover-Auth` header, whose expected
-    value is the "Clover Auth Code" shown under Your Apps > App Settings > Webhooks in the
-    Dashboard. Verified via `crypto.timingSafeEqual` (constant-time comparison) against
-    `CLOVER_AUTH_CODE` from env. Fails closed: if `CLOVER_AUTH_CODE` is unset, every request
-    is rejected rather than silently accepted.
-  - Tested manually (no auth header -> 401; wrong header -> 401; correct header -> 200;
-    `verificationCode` payload -> 200 without auth check). All four cases passed.
-  - Explicitly NOT yet implemented: parsing Clover's actual webhook envelope
-    (`merchants[mId].{items,inventory,...}`) into sync actions -- current handler only logs
-    and acks. That's the next piece of sync-engine work, not a security gap.
-- **Docker Compose + Cloudflare Tunnel** (`docker-compose.yml`, `cloudflared/`): two
-  services, `middleware` and `cloudflared`, on a shared bridge network (`poc-net`) so
-  `cloudflared` can reach the middleware container by service name
-  (`http://middleware:3000`) without relying on `localhost`.
-  - **Key correction made during setup:** the official `cloudflare/cloudflared` Docker Hub
-    image is distroless (confirmed from its own Dockerfile -- final stage is
-    `gcr.io/distroless/base-debian13:nonroot`, only the compiled binary is copied in). It has
-    no shell at all, so `docker exec -it` into it does not work. Built a custom image on
-    `alpine:3.20` instead (`cloudflared/Dockerfile`) that downloads the `cloudflared` binary
-    and provides a real shell for interactive setup.
-  - **Second correction:** traffic forwarding was never actually dependent on having a shell
-    open -- `cloudflared tunnel run` running as the container's main process (PID 1) is what
-    holds the connection to Cloudflare's edge and proxies to the middleware; the shell is
-    only needed once, up front, for the interactive `tunnel login`/`create`/`route dns`
-    handshake. The first version of the container just idled forever
-    (`tail -f /dev/null`) and never transitioned into forwarding traffic. Fixed with
-    `cloudflared/entrypoint.sh`: checks for `/root/.cloudflared/config.yml` on startup --
-    absent -> idle (shell-in mode); present -> `exec cloudflared tunnel run` as PID 1
-    (active forwarding mode). `docker compose restart cloudflared` is the switch between the
-    two modes after you've written the config.
-  - `cloudflared/config.example.yml` documents the config file to write once the tunnel is
-    created (`tunnel` id, `credentials-file` path, `ingress` rule pointing at
-    `http://middleware:3000`, catch-all `http_status:404`).
-  - Tunnel credentials/config persist across container restarts via the `cloudflared-data`
-    named volume, mounted at `/root/.cloudflared`.
-  - **Not yet done:** actually running `docker compose up` against a real Cloudflare account
-    (no `docker` binary available in this working environment to verify the compose file
-    executes -- verification so far is limited to `docker compose config`-equivalent manual
-    review, Dockerfile logic review, and `sh -n` syntax-checking `entrypoint.sh`. The Node
-    build/typecheck/runtime smoke tests were run directly via a locally-installed Node, not
-    through Docker.)
-
-### Environment setup used for local verification (this sandbox)
-
-Docker was not available in this working environment. To verify the Node code directly,
-these were installed via `apk` (Alpine): `nodejs`, `npm`, plus `libarchive-tools` (RAR
-extraction), `7zip`, `poppler-utils` (`pdftotext`/`pdftoppm`), and `tesseract-ocr` +
-`tesseract-ocr-data-eng` (OCR for the screenshot-based `API examples.pdf`). These were for
-documentation investigation and local code verification only -- they are not part of the
-project's runtime and are not referenced by the Dockerfiles.
+- **Middleware skeleton** (`src/`): Express with `GET /health` + `POST /webhooks/clover`. Verified: `typecheck` + `build` pass; live via `clokong.fullform.one` through Cloudflare Tunnel.
+- **Clover webhook verification** (`src/webhooks/handlers/clover.ts`): static `X-Clover-Auth` vs `CLOVER_AUTH_CODE` via `timingSafeEqual` (fail-closed), plus `verificationCode` handshake. Live verified: no header→401, wrong→401, `71b6...`→200, `verificationCode`→200.
+- **Clover → Zkong push** (`src/services/clover/client.ts:GET /items/{id}` via `CLOVER_API_TOKEN` + `src/services/zkong/items.ts:batchImportItem` with `unitName:1`, cent string `"3600"` for $36.00, `barCode = sku||code||id`): live verified `I:A7GYZFS51N3AY UPDATE 500000 → batchImportItem ok` and `M5 MAC MINI 4200 → ASRX79016G 4200` with cent round-trip fix (`4200→42→4200` → now `4200→4200`).
+- **Clover DELETE → Zkong** (`DELETE /zk/item/batchDeleteItem` with `{list:[barCode]}`; omits empty `storeId`): fixed from `POST` (was `10009` param error), now `batchDeleteItem ok` verified after rebuild.
+- **Echo loop prevention + persistence** (`src/db/models/store.ts:item_map`): `ensureDefaultStore` + `upsertItemMap` stores `standard_price`/`last_pushed_price`/`promo_active` per `(store_id, clover_item_id)`, compares `fetched price === last_pushed_price` to skip self-triggered webhooks; `DELETE` cleans `item_map`.
+- **Zkong auth** (`src/utils/rsa.ts` + `src/services/zkong/auth.ts`): `GET getErpPublicKey` → `RSA PKCS1` encrypt → `POST login` (loginType 3), cached 7d minus margin, `401 → re-login → retry-once` in `src/services/zkong/client.ts`. Live verified against `esl-eu.zkong.com` (`VensweGlobalLLC` `1786427294219` → store `S1011`/`Sugandha Puja`).
+- **Zkong → Clover poller** (`src/polling/zkong-poll.ts`): `POST /zk/erp/item/list` paginated `50`, `zkongPriceToCents` handles `"4400"` (=4400) and legacy `"42.00"` (=4200), diffs `last_zkong_update_time`/`last_pushed_price`, `PUT /v3/merchants/{mId}/items/{id}` via `CLOVER_API_TOKEN`, updates `item_map`+`sync_log`. Started in `src/index.ts` via `startZkongPoller()` (default 5 min, `ZKONG_POLL_INTERVAL_MS` tunable; live log `zkong poll] 4400 → pushing to Clover ...`).
+- **Postgres** (`docker-compose.yml: db` `postgres:16-alpine`, `5432:5432`, `pgdata` vol, healthcheck; `src/db/connection.ts: pg Pool` + `initDb()` for `stores`/`item_map`/`sync_log`): replaces the earlier `better-sqlite3` file DB, credentials via `.env` (`POSTGRES_*`/`DATABASE_URL`), exposed for `psql`/DBeaver (`localhost:5432`/`postgres`/`clover_zkong`).
+- **Docker Compose + Tunnel** (`cloudflared/Dockerfile` alpine with shell — official image is distroless `gcr.io/distroless/base-debian13:nonroot` — plus `entrypoint.sh` that `exec`s `cloudflared tunnel run --token $TUNNEL_TOKEN` when `cloudflared/.env` `TUNNEL_TOKEN` is set, else idles). Live: `clokong.fullform.one` → `middleware:3000` on `poc-net`, verified via manual `curl` + live Clover `GAAC1D37ZZDV1` events.
+- **Price is cent-based both ways** (`unitName:1`, no `/100`): Clover `$36.00` (`3600`) ↔ Zkong `"3600"`; poller `parseInt` for ints + `parseFloat*100` heuristic for legacy decimals fixes the `4200↔42` and `4400→440000` bugs.
 
 ---
 
 ## Project Structure
 
-Reflects the actual repo layout. Items marked `(planned)` are in the target design from
-earlier planning but not yet created; everything else exists and has been verified per the
-Implementation Status section above.
+Reflects the actual repo layout (as of the latest Clover↔Zkong round-trip fix).
 
 ```
 cloverPosDemo/
 ├── src/
-│   ├── config/
-│   │   └── env.ts               # Clover/Zkong config + CLOVER_AUTH_CODE
-│   ├── services/                 (planned)
-│   │   ├── clover/
-│   │   │   ├── client.ts
-│   │   │   ├── auth.ts
-│   │   │   ├── items.ts
-│   │   │   └── inventory.ts
-│   │   ├── zkong/
-│   │   │   ├── client.ts        # axios client + 401 retry-once wrapper
-│   │   │   ├── auth.ts          # getErpPublicKey -> RSA encrypt -> login -> token cache
-│   │   │   ├── items.ts         # batchImportItem, batchDeleteItem, erp/item/list, getItemByBarCodeAndExternalStoreId
-│   │   │   └── logs.ts          # integratedLogPage reconciliation
-│   │   └── sync/
-│   │       ├── engine.ts
-│   │       ├── price-sync.ts
-│   │       ├── inventory-sync.ts
-│   │       └── catalog-sync.ts
-│   ├── webhooks/
-│   │   ├── server.ts            # Express app: GET /health, POST /webhooks/clover
-│   │   └── handlers/
-│   │       └── clover.ts        # verificationCode handshake + X-Clover-Auth check (done)
-│   ├── polling/                  (planned)
-│   │   ├── zkong-poll.ts        # /zk/erp/item/list diff-by-updateTime loop
-│   │   └── reconcile.ts         # integratedLogPage check loop
-│   ├── db/                       (planned)
-│   │   ├── connection.ts
+│   ├── config/env.ts           # Clover/Zkong/Postgres + CLOVER_AUTH_CODE + CLOVER_API_TOKEN
+│   ├── services/
+│   │   ├── clover/client.ts     # GET/PUT /v3/merchants/{mId}/items/{id} (Bearer CLOVER_API_TOKEN)
+│   │   └── zkong/
+│   │       ├── auth.ts          # getErpPublicKey → RSA → login → token cache (7d, 401-retry)
+│   │       ├── client.ts        # axios + Authorization injection + 401 retry-once
+│   │       └── items.ts         # batchImportItem (unitName:1, cents), batchDeleteItem (DELETE), mapCloverToZkongItem
+│   ├── polling/zkong-poll.ts    # POST /zk/erp/item/list paginated, cent parse, → PUT Clover on diff
+│   ├── db/
+│   │   ├── connection.ts        # pg Pool + initDb() for stores/item_map/sync_log
 │   │   └── models/
-│   │       ├── item-map.ts      # Clover itemId <-> Zkong barCode mapping + last updateTime seen
-│   │       └── sync-log.ts
-│   ├── middleware/               (planned -- rate-limit/logger not yet added)
-│   │   ├── auth.ts
-│   │   ├── rate-limit.ts
-│   │   └── logger.ts
-│   ├── utils/                    (planned)
-│   │   ├── mapper.ts
-│   │   ├── rsa.ts               # RSA encryption helper for Zkong login
-│   │   └── retry.ts
-│   ├── types/                    (planned)
-│   │   ├── clover.ts
-│   │   └── zkong.ts
-│   └── index.ts                 # entrypoint, starts Express server
+│   │       ├── store.ts         # ensureDefaultStore(merchantId)
+│   │       ├── item-map.ts      # upsert/findByBarcode/findByCloverId (async pg)
+│   │       └── sync-log.ts      # logSync (async pg)
+│   ├── webhooks/
+│   │   ├── server.ts            # Express: GET /health, POST /webhooks/clover
+│   │   └── handlers/clover.ts  # verificationCode + X-Clover-Auth + fetch→push→persist + echo check + DELETE
+│   ├── utils/rsa.ts             # RSA public-key password encryption (Node crypto, PKCS1)
+│   └── index.ts                 # initDb retry + eager Zkong login + startServer + startZkongPoller
 ├── cloudflared/
-│   ├── Dockerfile               # alpine + cloudflared binary (has a shell, unlike official image)
-│   ├── entrypoint.sh            # idle-until-configured / run-tunnel switch
-│   └── config.example.yml       # template for /root/.cloudflared/config.yml
-├── .env.example
-├── .gitignore
-├── docker-compose.yml            # middleware + cloudflared services on shared network
-├── Dockerfile                    # middleware container (node:20-alpine)
-├── tsconfig.json
-├── package.json
+│   ├── Dockerfile               # alpine + cloudflared (has shell, unlike distroless official)
+│   ├── entrypoint.sh            # TUNNEL_TOKEN → run, else idle for setup
+│   ├── .env.example             # TUNNEL_TOKEN template
+│   └── .env                     # your token (gitignored)
+├── docker-compose.yml            # db (postgres:16, 5432) + middleware (3000) + cloudflared on poc-net
+├── Dockerfile                    # middleware (node:20-alpine, pg needs no native build)
+├── .env.example                  # CLOVER_*, ZKONG_*, POSTGRES_*, DATABASE_URL, ZKONG_POLL_INTERVAL_MS
+├── package.json / tsconfig.json
 └── docs/
-    └── architecture.md   (this file)
+    ├── architecture.md
+    └── USER_GUIDE.md            # price field meanings + how to use the app
 ```
 
 ### Environment variables
 
-Reflects `.env.example` as actually written (see file for authoritative source).
+Reflects `.env.example` as written (authoritative).
 
 ```env
 # Clover
@@ -582,6 +479,8 @@ CLOVER_API_BASE=https://sandbox.dev.clover.com/v3/merchants
 CLOVER_MERCHANT_ID=
 CLOVER_CLIENT_ID=
 CLOVER_CLIENT_SECRET=
+# Merchant API Token (Test Merchants → <merchant> → API Token, Bearer for item fetch/update)
+CLOVER_API_TOKEN=
 
 # Zkong
 ZKONG_API_BASE=https://esl-eu.zkong.com
@@ -590,27 +489,21 @@ ZKONG_PASSWORD=
 ZKONG_MERCHANT_ID=
 ZKONG_AGENCY_ID=
 
-# App
+# App + Webhook Auth
 PORT=3000
-# The "Clover Auth Code" from Your Apps > App Settings > Webhooks in the
-# Clover Developer Dashboard. Required for webhook requests to be accepted.
-CLOVER_AUTH_CODE=
-```
+CLOVER_AUTH_CODE=              # Your Apps → App Settings → Webhooks → Clover Auth Code
 
-Not yet added to `.env.example` (planned, per the polling/reconciliation design above):
-`ZKONG_POLL_INTERVAL_MS`, `RECONCILE_INTERVAL_MS`, `DB_PATH`.
+# Postgres (db service)
+POSTGRES_DB=clover_zkong
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong  # host `db` inside Docker, `localhost` from host
+ZKONG_POLL_INTERVAL_MS=300000  # Zkong → Clover polling interval (ms)
+```
 
 ### Dependencies
 
-**Actually installed** (`package.json`): `express` (5.1.0), `dotenv` (17.2.3 -- bumped from
-the originally planned 4.0.4, which does not exist on the npm registry), `typescript`,
-`ts-node-dev`, `@types/express`, `@types/node`.
-
-**Planned, not yet added:** `axios` (HTTP client for Clover/Zkong REST calls),
-`better-sqlite3` (local state DB), `node-cron` (polling scheduler), `winston` (logging),
-`zod` (validation). Node's built-in `crypto` module will be used for both the Zkong RSA
-login flow and the Clover webhook auth comparison (already in use for the latter, via
-`crypto.timingSafeEqual`).
+`express@5.1.0`, `dotenv@17.2.3`, `axios@1.12.2`, `pg@8.13.1`, `typescript`, `ts-node-dev`, `@types/express`/`@types/node`/`@types/pg`. `better-sqlite3` was replaced by `pg` when we moved from file DB to the separate Postgres container. Native `crypto` is used for RSA (`utils/rsa.ts`) and `timingSafeEqual`.
 
 ---
 

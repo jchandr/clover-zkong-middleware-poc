@@ -24,6 +24,23 @@ function getToken(): string {
   return config.clover.apiToken;
 }
 
+export async function updateCloverItem(
+  merchantId: string,
+  itemId: string,
+  patch: Partial<Pick<CloverItem, "price" | "name" | "sku" | "code">>
+): Promise<CloverItem> {
+  const base = config.clover.apiBase.replace(/\/$/, "");
+  const url = `${base}/${merchantId}/items/${itemId}`;
+  const res = await axios.post<CloverItem>(url, patch, {
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "application/json",
+    },
+    timeout: 10_000,
+  });
+  return res.data;
+}
+
 /**
  * Fetch full item data from Clover after webhook notification.
  * Clover sends only objectId like "I:8AW06CG1QDMHW", so we must GET /items/{id}.
