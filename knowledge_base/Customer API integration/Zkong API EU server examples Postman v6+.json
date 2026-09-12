@@ -1,0 +1,1733 @@
+{
+	"info": {
+		"_postman_id": "8ef4be6d-d9d2-4d9b-aa72-d63b517cee1c",
+		"name": "Zkong API （EU server examples）",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "38534567"
+	},
+	"item": [
+		{
+			"name": "getErpPublicKey",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/user/getErpPublicKey",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"user",
+						"getErpPublicKey"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "login",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"account\": \"account\", \r\n  \"loginType\": 3, \r\n  \"password\": \"Password encrypted with RSA public key\"  \r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/user/login",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"user",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list (AP status)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/ap/list?storeId=",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"ap",
+						"list"
+					],
+					"query": [
+						{
+							"key": "storeId",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1724830346696,\r\n  \"attrClass\": \"default\",\r\n  \"attrName\": \"default\"\r\n }",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/item/list?page=1&size=10",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"item",
+						"list"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "10"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list (ESL status)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1571661761656,\r\n  \"itemBarCode\": \"\",\r\n  \"itemTitle\": \"\",\r\n  \"priceTagCode\": \"\",\r\n  \"oemModel\": \"\",\r\n  \"shelfNo\": \"\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/esl/list?page=1&size=10",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"esl",
+						"list"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "10"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "timeFlash",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1727698405636,\r\n  \"useExternalStoreId\": 1,\r\n  \"externalStoreId\": \"7654321\",\r\n  \"itemBarcodes\": [\r\n    \"123456789012\",\"1234567890123\",\"345678901237\"\r\n  ],\r\n  \"startFlashCron\": \"* * 9 * * ?\",\r\n  \"stopFlashCron\": \"* 30 9 * * ?\",\r\n  \"lightFrequency\": 1,\r\n  \"lightColor\": 1,\r\n  \"brightness\": 40\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/led/timeFlash",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"led",
+						"timeFlash"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "stopLedByPricetag",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": " [\r\n    \"123456789012\"\r\n  ]",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/led/stopLedByItem?storeId=",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"led",
+						"stopLedByItem"
+					],
+					"query": [
+						{
+							"key": "storeId",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "executeLedByBarCodes",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {}
+			},
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1727698405636,\r\n  \"itemBarCodes\": [              \r\n    \"\"\r\n  ],\r\n  \"barCodes\": [\r\n    \"88605E381\",\"83007D521\",\"875218922\"\r\n  ],\r\n  \"lightTime\": \"60\",\r\n  \"brightness\": \"60\",\r\n  \"lightFrequency\": \"1\",\r\n  \"lightCololr\": \"7\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/led/executeLedByBarCodes",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"led",
+						"executeLedByBarCodes"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "findBinds",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"storeId\": 1615360000392,\r\n    \"model\": \"ZKC29S\",\r\n    \"state\": \"0\",\r\n    \"deviceType\": \"0\",\r\n    \"batteryLevel\": \"5\",\r\n    \"turnOver\": \"1\",\r\n    \"apSignalStart\": \"1\",\r\n    \"apSignalEnd\": \"99\",\r\n    \"priceTagCode\": \"aa\",\r\n    \"itemBarCode\": \"aa\",\r\n    \"itemTitle\": \"aa\",\r\n    \"shelfNo\": \"aa\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/findBinds/1/0 ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"findBinds",
+						"1",
+						"0 "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchImportItem",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "eyJhbGciOiJIUzI1NiJ9.eyJyYW5kb20iOiIyNzQ3NjAwIiwiaWQiOjI1MzcsImV4cCI6MTY5Njc1NzA3MCwidGltZXN0YW1wIjoxNjk2NzUzNDcwOTI3fQ.o4HblsVGuyEAb9WgVl919HmqsV0LCwv0GZ08J3F2Mxo",
+						"type": "text"
+					},
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "\r\n{\r\n    \"merchantId\" : \"1645400000018\",\r\n    \"agencyId\" : \"155870000038\",\r\n    \"storeId\" : \"1683610000078\",\r\n    \"unitName\": 1,\r\n    \"itemList\" : [\r\n        {\r\n            \"attrCategory\": \"default\",\r\n            \"attrName\": \"default\",\r\n            \"barCode\": \"658748521\",\r\n            \"itemTitle\": \"eeeeeeeeee\",\r\n            \"originalPrice\": \"  \",\r\n            \"price\": \"  \",\r\n            \"productArea\": \"aaaaa\",\r\n            \"productCode\": \"200001582\",\r\n            \"productSku\": \"200001275\",\r\n            \"promotionText\": \"text de ejemplo\"\r\n        }\r\n    ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/batchImportItem",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"batchImportItem"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchDeleteItem",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "eyJhbGciOiJIUzI1NiJ9.eyJyYW5kb20iOiIyNzQ3NjAwIiwiaWQiOjI1MzcsImV4cCI6MTY5Njc1NzA3MCwidGltZXN0YW1wIjoxNjk2NzUzNDcwOTI3fQ.o4HblsVGuyEAb9WgVl919HmqsV0LCwv0GZ08J3F2Mxo",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": \"1683610000378\",\r\n  \"list\": [\r\n    \"000413000007\"\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/batchDeleteItem",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"batchDeleteItem"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "uploadPicItem",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/uploadPicItem?merchantId=1585000065204&barCode=2000000056&modelColor=1&modelSize=2.13&picSize=250*122",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"uploadPicItem"
+					],
+					"query": [
+						{
+							"key": "merchantId",
+							"value": "1585000065204"
+						},
+						{
+							"key": "barCode",
+							"value": "2000000056"
+						},
+						{
+							"key": "modelColor",
+							"value": "1"
+						},
+						{
+							"key": "modelSize",
+							"value": "2.13"
+						},
+						{
+							"key": "picSize",
+							"value": "250*122"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "uploadItemPic",
+			"request": {
+				"auth": {
+					"type": "apikey",
+					"apikey": [
+						{
+							"key": "value",
+							"value": "eyJhbGciOiJIUzI1NiJ9.eyJyYW5kb20iOiI0OTE2NjY0IiwiaWQiOjMyMDUsImV4cCI6MTY5NzQzODU2MiwidGltZXN0YW1wIjoxNjk3NDM0OTYyNTU2fQ.noohPUbarZg-4mo5ma3eR6gukndMv8t_ZvgeKHOG214",
+							"type": "string"
+						},
+						{
+							"key": "key",
+							"value": "Authorization",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/uploadPicItem?merchantId=1585812000004&storeId=1585800005275&barCode=2000123456&picNum=1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"uploadPicItem"
+					],
+					"query": [
+						{
+							"key": "merchantId",
+							"value": "1585812000004"
+						},
+						{
+							"key": "storeId",
+							"value": "1585800005275"
+						},
+						{
+							"key": "barCode",
+							"value": "2000123456"
+						},
+						{
+							"key": "picNum",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delItemPic",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"barcode\": \"1580114\",\r\n  \"picIndex\": [\r\n    1,\r\n2\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/delItemPic",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"delItemPic"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "getItemByBarCodeAndExternalStoreId",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"itemBarCode\": \"123456\",\r\n  \"externalStoreId\": \"10001\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/item/getItemByBarCodeAndExternalStoreId ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"item",
+						"getItemByBarCodeAndExternalStoreId "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "geyItemByPriceTagBarCode",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "eu",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"priceTagBarCode\": \"100058526\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/geyItemByPriceTagBarCode ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"geyItemByPriceTagBarCode "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "bindItemPriceTag",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"itemBarCode\": \"2000000056\",\r\n    \"priceTagCode\": \"A0A3B8000074\",\r\n    \"shelfNum\": \"\",\r\n    \"storeId\": \"1588040000676\",\r\n    \"apMac\": \"A0A3B9000050\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/bindItemPriceTag/1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"bindItemPriceTag",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchBind (batch bind item with tags)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1588040000676,\r\n  \"tagItemBinds\": [\r\n    {\r\n      \"eslBarcode\": \"100000086\",\r\n      \"itemBarcode\": \"2000000056\"\r\n    },\r\n    {\r\n      \"eslBarcode\": \"100000998\",\r\n      \"itemBarcode\": \"2000123457\"\r\n}\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/batchBind",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"batchBind"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchUnbind",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1588040000676,\r\n  \"tagItemBinds\": [\r\n    {\r\n      \"eslBarcode\": \"100000086\"\r\n    },\r\n    {\r\n      \"eslBarcode\": \"100000998\"\r\n}\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/batchUnbind",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"batchUnbind"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchBind (batch import item and bind with tags)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": \"1591870000794\",\r\n  \"unitName\": 1,\r\n  \"bindList\": [\r\n    {\r\n      \"eslBarcode\": \"100000886\",\r\n      \"item\": {\r\n        \"attrCategory\": \"default\",\r\n        \"attrName\": \"default\",\r\n        \"barCode\": \"100001234\",\r\n        \"itemTitle\": \"apple\",\r\n        \"originalPrice\": \"600\",\r\n        \"price\": \"6300\",\r\n        \"productArea\": \"shan dong\",\r\n        \"productCode\": \"200001582\",\r\n        \"productSku\": \"200001275\",\r\n        \"promotionText\": \"promot\"\r\n      }\r\n    },\r\n    {\r\n      \"eslBarcode\": \"100000887\",\r\n      \"item\": {\r\n        \"attrCategory\": \"default\",\r\n        \"attrName\": \"default\",\r\n        \"barCode\": \"100001254\",\r\n        \"itemTitle\": \"banana\",\r\n        \"originalPrice\": \"10\",\r\n        \"price\": \"8\",\r\n        \"productArea\": \"hai nan\",\r\n        \"productCode\": \"200001423\",\r\n        \"productSku\": \"20001536\",\r\n        \"promotionText\": \"promot\"\r\n      }\r\n}\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/esl/batchBind",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"esl",
+						"batchBind"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "bindMulti",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Language",
+						"value": "en",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"itemOrders\": [\r\n    {\r\n      \"itemCode\": \"12001445\",\r\n      \"order\": 1\r\n    }\r\n  ],\r\n  \"priceTagCode\": \"100005939\",\r\n  \"storeId\": 1584000006868,\r\n  \"templateId\": 1523\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/bindMulti",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"bindMulti"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "reverseShow",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/reverseShow?barcode=10060001",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"reverseShow"
+					],
+					"query": [
+						{
+							"key": "barcode",
+							"value": "10060001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "updateForceByBarCodes",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1605100007965,\r\n  \"barCodeList\": [  \r\n\"100000025\",\r\n\"100000065\"\r\n  ]\r\n }",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/updateForceByBarCodes?useExternalStoreId=1&externalStoreId=123456",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"updateForceByBarCodes"
+					],
+					"query": [
+						{
+							"key": "useExternalStoreId",
+							"value": "1"
+						},
+						{
+							"key": "externalStoreId",
+							"value": "123456"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "stopLedByItem",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": " [\r\n    \"2000123456\",\r\n    \"2000135798\"\r\n  ]",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/led/stopLedByItem?storeId=1588041156676",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"led",
+						"stopLedByItem"
+					],
+					"query": [
+						{
+							"key": "storeId",
+							"value": "1588041156676"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "eslReboot",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"barcodeList\": [\r\n    \"A0A3B8273D71\",\r\n    \"A0A3B8273D7C\",\r\n    \"A0A3B8273D7C\"\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/pricetag/eslReboot",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"pricetag",
+						"eslReboot"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "addAP",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": \"1588041156676\",\r\n  \"mac\": \"A0A3B80C2BE0\",\r\n  \"apName\": \"Tennstedt-AP\",\r\n  \"comment\": \"\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/ap/add ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"ap",
+						"add "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delAP",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": \"1588041156676\",\r\n  \"mac\": \"A0A3B8273D77\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/ap/del",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"ap",
+						"del"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "viewBindPicByBarcode",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/viewBindPicByBarcode?barcode=8000000682",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"viewBindPicByBarcode"
+					],
+					"query": [
+						{
+							"key": "barcode",
+							"value": "8000000682"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "getPriceTagsByItemBarCode",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"itemBarCode\": \"123456\",\r\n  \"externalStoreId\": \"123456\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/getPriceTagsByItemBarCode",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"getPriceTagsByItemBarCode"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "geyPriceTagByPriceTagBarCode",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"priceTagBarCode\": \"A0A3B0000C96\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/geyPriceTagByPriceTagBarCode ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"geyPriceTagByPriceTagBarCode "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "listLog",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1632270000577,\r\n    \"createdTime\": \"2022-4-21,2022-4-27\",\r\n    \"operation\": null,\r\n    \"model\": null,\r\n    \"status\": null,\r\n    \"priceTagBarCode\": null,\r\n    \"itemBarCode\": null,\r\n    \"itemName\": null,\r\n    \"shelfNo\": null,\r\n    \"feedBackTimeOrder\": \"asc\",\r\n    \"timeCostOrder\": null\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/erp/log/listLog?page=1&size=10 ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"erp",
+						"log",
+						"listLog"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "10 "
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "listPriceTagRelevantInfo",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"relationalInfo\": {\r\n        \"storeIdList\": [\r\n            1632270000577,\r\n            1638340000621\r\n        ],\r\n        \"externalStoreIdList\": []\r\n    },\r\n    \"priceTagInfo\": {\r\n        \"barCodeList\": [],\r\n        \"oemModelList\": [\r\n            \"ZKC75V-DN\"\r\n        ],\r\n        \"state\": 0,\r\n        \"batteryLevel\": 5\r\n    },\r\n    \"displayInfo\": {\r\n        \"needPriceTagInfo\": true,\r\n        \"needBindInfo\": true,\r\n        \"needItemInfo\": false,\r\n        \"needRelationalInfo\": false\r\n    },\r\n    \"itemQueryCondition\": {\r\n        \"barCode\": \"\",\r\n        \"itemTitle\": \"cola330ml\"\r\n    },\r\n    \"pageSize\": 10,\r\n    \"currentPage\": 1\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/pricetag/listPriceTagRelevantInfo ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"pricetag",
+						"listPriceTagRelevantInfo "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "batchBindMulti",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1584608000068,\r\n  \"bindList\": [\r\n    {\r\n      \"itemOrders\": [\r\n        {\r\n          \"itemCode\": \"12000005\",\r\n          \"order\": 1\r\n        },\r\n        {\r\n          \"itemCode\": \"12000006\",\r\n          \"order\": 2\r\n        }\r\n      ],\r\n      \"priceTagCode\": \"100000009\",\r\n      \"templateId\": 1523\r\n    },\r\n    {\r\n      \"itemOrders\": [\r\n        {\r\n          \"itemCode\": \"12000008\",\r\n          \"order\": 1\r\n        },\r\n        {\r\n          \"itemCode\": \"12000009\",\r\n          \"order\": 1\r\n        }\r\n      ],\r\n      \"priceTagCode\": \"100000008\",\r\n      \"templateId\": 1523\r\n    }\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/bind/batchBindMulti",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"bind",
+						"batchBindMulti"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "importTemplateRefactorFile",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": []
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/importTemplateRefactorFile/1?merchantId=1585812365204&storeId=1632276202577 ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"importTemplateRefactorFile",
+						"1"
+					],
+					"query": [
+						{
+							"key": "merchantId",
+							"value": "1585812365204"
+						},
+						{
+							"key": "storeId",
+							"value": "1632276202577 "
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delete (template)",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/delete/123/1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"delete",
+						"123",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "copyMerchantTo (template)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "[11,22]",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/copyMerchantTo/1632276202577",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"copyMerchantTo",
+						"1632276202577"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "attrCategory (template)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"categoryName\": \"test\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/attrCategory/add",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"attrCategory",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "findList (template attrCategory)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/attrCategory/findList",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"attrCategory",
+						"findList"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "del (attrCategory)",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/attrCategory/del/159 ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"attrCategory",
+						"del",
+						"159 "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "add (templateAttr)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"categoryId\": 123,\r\n    \"categoryName\": \"正常\",\r\n    \"attrName\": \"test\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/templateAttr/add ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"templateAttr",
+						"add "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "findList (templateAttr)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/templateAttr/findList",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"templateAttr",
+						"findList"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "del (templateAttr)",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/templateAttr/del/1670240000031",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"templateAttr",
+						"del",
+						"1670240000031"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "getAll (pricetagModel)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/pricetagModel/getAll ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"pricetagModel",
+						"getAll "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "exportTemplateRefactorFile",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "[1,15,20]",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/exportTemplateRefactorFile/1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"exportTemplateRefactorFile",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "enable (template)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/enable/808/1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"enable",
+						"808",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "disable (template)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/disable/808/1",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"disable",
+						"808",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "list (store template)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeId\": 1584600000868,\r\n  \"hardwareType\": \"1\",\r\n  \"sceneNumber\": 4,\r\n  \"size\": \"2.13\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/template/list/0/10",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"template",
+						"list",
+						"0",
+						"10"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "add (store)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "{{Token2409}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeName\": \"Zucchetti_Ryan\",\r\n  \"dataCombination\": 1,\r\n  \"externalStoreId\": \"\",\r\n  \"contacts\": \"\",\r\n  \"phone\": \"\",\r\n  \"mailbox\": \"\",\r\n  \"address\": \"\",\r\n  \"comment\": \"\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/store/add",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"store",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "update (store)",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"storeName\": \"123159\",\r\n  \"externalStoreId\": \"123159\",\r\n  \"contacts\": \"123159\",\r\n  \"phone\": \"123159\",\r\n  \"mailbox\": \"123159\",\r\n  \"address\": \"123159\",\r\n  \"comment\": \"123159\",\r\n  \"needToUpdateExternalStoreId\": \"123159\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/store/update ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"store",
+						"update "
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "storeList",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://esl-eu.zkong.com/zk/store/storeList ",
+					"protocol": "http",
+					"host": [
+						"esl-eu",
+						"zkong",
+						"com"
+					],
+					"path": [
+						"zk",
+						"store",
+						"storeList "
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "token",
+			"value": "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3MjkyNDYxNDcsInRpbWVzdGFtcCI6MTcyOTI0MjU0NzcyMH0.YEh8vAuloxBAaabFu5qIkkz-IuinfDu1beTGjNYeyEU",
+			"type": "string"
+		}
+	]
+}

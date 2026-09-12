@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: clover-zkong-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clover_zkong}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - poc-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-clover_zkong}"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  middleware:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clover-zkong-middleware
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - poc-net
+
+  cloudflared:
+    build:
+      context: ./cloudflared
+      dockerfile: Dockerfile
+    container_name: clover-zkong-cloudflared
+    restart: unless-stopped
+    # Dashboard-managed tunnel: set TUNNEL_TOKEN in cloudflared/.env
+    # (see cloudflared/.env.example). Container auto-starts forwarding
+    # via TUNNEL_TOKEN; no config.yml needed.
+    stdin_open: true
+    tty: true
+    env_file:
+      - cloudflared/.env
+    volumes:
+      # Persists tunnel data across container restarts.
+      - cloudflared-data:/root/.cloudflared
+    depends_on:
+      - middleware
+    networks:
+      - poc-net
+
+networks:
+  poc-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  cloudflared-data:
