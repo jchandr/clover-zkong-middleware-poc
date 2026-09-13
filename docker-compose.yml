@@ -37,6 +37,18 @@ services:
     networks:
       - poc-net
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clover-zkong-frontend
+    ports:
+      - "5173:5173"
+    networks:
+      - poc-net
+    depends_on:
+      - middleware
+
   cloudflared:
     build:
       context: ./cloudflared
