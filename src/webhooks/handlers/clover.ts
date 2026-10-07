@@ -128,8 +128,76 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
           const item = await getCloverItem(merchantId, itemId);
           console.log(`[sync] fetched: ${item.name} price=${item.price} sku=${item.sku ?? ""} code=${item.code ?? ""}`);
           const zkongItem = mapCloverToZkongItem(item);
+
+          const { ensureDefaultStore } = await import("../../db/models/store");
+          const { upsertItemMap, findByCloverId } = await import("../../db/models/item-map");
+          const { logSync } = await import("../../db/models/sync-log");
+
+          const store = await ensureDefaultStore("", merchantId);
+          const existing = await findByCloverId(store.id, item.id);
+
+          // Preserve existing barcode if item was already mapped, preventing duplicates in Zkong
+          if (existing) {
+            zkongItem.barCode = existing.zkong_barcode;
+          }
+
+          // Echo suppression: if price matches what we last pushed, ignore to prevent loop
+          if (existing && existing.last_pushed_price === item.price) {
+            console.log(`[sync] echo suppressed for Clover item ${item.id} (price ${item.price} matches last_pushed_price)`);
+            continue;
+          }
+
+          // Promo suppression: while a Zkong discount is active, Zkong owns the
+          // sale price on the tag. Pushing this Clover change would overwrite it.
+          // Record the new base price instead; the poller restores it when the
+          // promo ends (Zkong flips price back to originalPrice).
+          if (existing && existing.promo_active) {
+            console.log(
+              `[sync] promo active for ${item.id}: NOT pushing Clover price ${item.price} to Zkong (recorded as base price ${item.price})`
+            );
+            await upsertItemMap({
+              store_id: store.id,
+              clover_item_id: item.id,
+              zkong_barcode: existing.zkong_barcode,
+              standard_price: item.price,
+              last_pushed_price: existing.last_pushed_price,
+              promo_active: true,
+              zkong_item_id: existing.zkong_item_id,
+              last_zkong_update_time: existing.last_zkong_update_time,
+            });
+            await logSync({
+              item_map_id: existing.id,
+              direction: "clover->zkong",
+              action: "SKIPPED_PROMO_ACTIVE",
+              from_price: existing.standard_price,
+              to_price: item.price,
+              reason: `Zkong promo active for ${item.id}; Clover price recorded as new base, Zkong sale price preserved`,
+            });
+            continue;
+          }
+
           console.log(`[sync] pushing to Zkong barCode=${zkongItem.barCode}`);
           await batchImportToZkong([zkongItem]);
+
+          const mappedRow = await upsertItemMap({
+            store_id: store.id,
+            clover_item_id: item.id,
+            zkong_barcode: zkongItem.barCode,
+            standard_price: item.price,
+            last_pushed_price: item.price,
+            promo_active: false,
+            zkong_item_id: null,
+            last_zkong_update_time: null,
+          });
+
+          await logSync({
+            item_map_id: mappedRow.id,
+            direction: "clover->zkong",
+            action: type,
+            from_price: null,
+            to_price: item.price,
+            reason: `Clover ${type} ${itemId}`,
+          });
         } catch (e) {
           const msg = (e as Error).message;
           // 404 means item was deleted between webhook and fetch — treat as delete

@@ -13,7 +13,6 @@ export interface ZkongItem {
   barCode: string;
   itemTitle: string;
   price?: string;
-  originalPrice?: string;
   attrCategory: string;
   attrName: string;
   productCode?: string;
@@ -51,7 +50,7 @@ export async function batchImportToZkong(
     merchantId: config.zkong.merchantId,
     agencyId: config.zkong.agencyId,
     storeId: opts?.storeId ?? "",
-    unitName: 0, // tell Zkong price is in cents (divided by 100)
+    unitName: 1, // 1 = raw values without Zkong dividing by 100
     itemList: items,
   };
 

@@ -35,8 +35,6 @@ export async function initDb(): Promise<void> {
       zkong_barcode TEXT NOT NULL,
       standard_price INTEGER NOT NULL,
       last_pushed_price INTEGER NOT NULL,
-      active_promo_id INTEGER,
-      active_promo_price INTEGER,
       promo_active BOOLEAN NOT NULL DEFAULT FALSE,
       zkong_item_id BIGINT,
       last_zkong_update_time TIMESTAMPTZ,

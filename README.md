@@ -184,7 +184,7 @@ DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong
   # Then: SELECT * FROM stores; SELECT * FROM item_map; SELECT * FROM sync_log;
   ```
 
-Tables: `stores`, `item_map` (`standard_price`/`last_pushed_price`/`promo_*`), `sync_log`. Schema is auto-created on middleware startup via `src/db/connection.ts:initDb()`.
+Tables: `stores`, `item_map` (`standard_price`/`last_pushed_price`/`promo_active`), `sync_log`. Schema is auto-created on middleware startup via `src/db/connection.ts:initDb()`.
 
 If running the middleware **locally without Docker** (`npm run dev`), set `DATABASE_URL` in `.env` to use `localhost`:
 ```env

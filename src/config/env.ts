@@ -32,7 +32,12 @@ export const config = {
     password: process.env.ZKONG_PASSWORD ?? "",
     merchantId: process.env.ZKONG_MERCHANT_ID ?? "",
     agencyId: process.env.ZKONG_AGENCY_ID ?? "",
+    // Zkong store id, required only for strategy/list polling (visibility of
+    // active promos). Empty disables the strategy poll.
+    storeId: process.env.ZKONG_STORE_ID ?? "",
   },
+
+  zkongPollIntervalMs: parseInt(process.env.ZKONG_POLL_INTERVAL_MS ?? "60000", 10),
 
   // The "Clover Auth Code" shown under Your Apps > App Settings > Webhooks
   // in the Clover Developer Dashboard. Clover includes this exact value in

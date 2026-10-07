@@ -2,6 +2,7 @@ import { config } from "./config/env";
 import { createServer } from "./webhooks/server";
 import { initDb } from "./db/connection";
 import { getZkongToken } from "./services/zkong/auth";
+import { startZkongPoller } from "./polling/zkong-poll";
 
 async function main(): Promise<void> {
   // Init Postgres schema (creates tables on first run, retry until db is ready)
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     console.log(
       `[middleware] webhook endpoint: POST http://localhost:${config.port}/webhooks/clover`
     );
+    startZkongPoller(config.zkongPollIntervalMs);
   });
 }
 

@@ -45,3 +45,26 @@ export async function getCloverItem(
 
   return res.data;
 }
+
+/**
+ * Update item fields (such as price in cents) on Clover.
+ */
+export async function updateCloverItem(
+  merchantId: string,
+  itemId: string,
+  data: { price?: number; name?: string }
+): Promise<CloverItem> {
+  const base = config.clover.apiBase.replace(/\/$/, "");
+  const url = `${base}/${merchantId}/items/${itemId}`;
+
+  const res = await axios.post<CloverItem>(url, data, {
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    timeout: 10_000,
+  });
+
+  return res.data;
+}
