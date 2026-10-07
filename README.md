@@ -63,6 +63,8 @@ Copy `.env.example` → `.env` and fill in every value:
 | `ZKONG_MERCHANT_ID` | Zkong portal → Merchant/Store management → **Merchant ID** |
 | `ZKONG_AGENCY_ID` | Zkong portal → Agency/Reseller management → **Agency ID** (if applicable) |
 | `ZKONG_API_BASE` | Default: `https://esl-eu.zkong.com` (EU server) |
+| `ZKONG_STORE_ID` | Zkong **store** ID from `GET /zk/store/storeList` (the `storeId` field, a large integer — **not** the org ID). Optional; enables promo strategy visibility logging. |
+| `ZKONG_POLL_INTERVAL_MS` | Zkong → Clover poller interval in ms (default: `60000`, use `1000` for testing) |
 
 ### App
 
@@ -186,10 +188,27 @@ DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong
 
 Tables: `stores`, `item_map` (`standard_price`/`last_pushed_price`/`promo_active`), `sync_log`. Schema is auto-created on middleware startup via `src/db/connection.ts:initDb()`.
 
+### One-time migration (after upgrade)
+
+The middleware does **not** auto-migrate an existing database. If `item_map` was created before `promo_active` was added, run:
+
+```bash
+docker compose exec db psql -U postgres -d clover_zkong \
+  -c "ALTER TABLE item_map ADD COLUMN IF NOT EXISTS promo_active BOOLEAN NOT NULL DEFAULT FALSE;"
+```
+
 If running the middleware **locally without Docker** (`npm run dev`), set `DATABASE_URL` in `.env` to use `localhost`:
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/clover_zkong
 ```
+
+### Price units & discount sync
+
+- **Both Clover and Zkong use cents.** Clover `$8700.00` = `870000` → Zkong `price=870000` (`unitName: 1`, no division).
+- **Zkong discounts live in extended fields**, not `price`: `custFeature1` = Was, `custFeature2` = Discount %, `custFeature3` = Discount Number.
+- Poller computes sale = `Was × (1 − Discount%/100)` (or Discount Number directly) and pushes it to Clover. Clearing the discount restores the base price.
+
+See **docs/USER_GUIDE.md** for the full discount flow, migration steps, and limitations.
 
 ---
 
@@ -228,21 +247,30 @@ Expected: `{"received":true}`
 ```
 cloverPosDemo/
 ├── src/
-│   ├── config/env.ts           # env loading + validation
+│   ├── config/env.ts              # env loading + validation
+│   ├── db/
+│   │   ├── connection.ts          # Postgres pool + initDb (schema)
+│   │   └── models/                # item_map, store, sync_log
+│   ├── polling/zkong-poll.ts      # Zkong → Clover poller + discount logic
+│   ├── services/
+│   │   ├── clover/client.ts       # Clover API (get/update item)
+│   │   └── zkong/                 # Zkong API (auth, items, client)
 │   ├── webhooks/
-│   │   ├── server.ts           # Express app + routes
-│   │   └── handlers/clover.ts  # Clover webhook handler (verificationCode + X-Clover-Auth)
-│   └── index.ts                # entrypoint
+│   │   ├── server.ts              # Express app + routes
+│   │   └── handlers/clover.ts     # Clover webhook → Zkong sync
+│   └── index.ts                   # entrypoint
 ├── cloudflared/
-│   ├── Dockerfile              # Alpine + cloudflared binary (has shell!)
-│   ├── entrypoint.sh           # runs tunnel via TUNNEL_TOKEN, or idles if not set
-│   ├── .env.example            # TUNNEL_TOKEN template
-│   └── .env                    # your tunnel token (gitignored, not committed)
-├── docker-compose.yml          # middleware + cloudflared on shared network
-├── Dockerfile                  # middleware container (node:20-alpine)
-├── .env.example                # template
+│   ├── Dockerfile               # Alpine + cloudflared binary (has shell!)
+│   ├── entrypoint.sh            # runs tunnel via TUNNEL_TOKEN, or idles if not set
+│   ├── .env.example             # TUNNEL_TOKEN template
+│   └── .env                     # your tunnel token (gitignored, not committed)
+├── docker-compose.yml             # middleware + cloudflared on shared network
+├── Dockerfile                     # middleware container (node:20-alpine)
+├── .env.example                   # template
 ├── package.json / tsconfig.json
-└── docs/architecture.md        # full architecture & decision log
+└── docs/
+    ├── USER_GUIDE.md              # setup, discount flow, migration
+    └── architecture.md            # full architecture & decision log
 ```
 
 ---
@@ -260,9 +288,13 @@ cloverPosDemo/
 | Entrypoint: `TUNNEL_TOKEN` → forward, else idle | ✅ Done |
 | Cloudflare tunnel DNS routing | 📋 Manual step (one-time) |
 | Clover webhook registration | 📋 Manual step |
-| Zkong auth client (RSA login) | ⏳ Next |
-| `item_map` / `stores` SQLite schema | ⏳ Planned |
-| Zkong sync engine (poll + push) | ⏳ Planned |
+| Zkong auth client (RSA login) | ✅ Done |
+| Clover → Zkong price sync (webhook → batchImportItem) | ✅ Done |
+| Zkong → Clover price sync (poller) | ✅ Done |
+| Zkong discount → Clover (Was / Discount % / Discount Number) | ✅ Done |
+| Barcode preservation (no duplicate Zkong items) | ✅ Done |
+| Promo strategy visibility (`strategy/list`) | ⚠️ Blocked by account permission (10030) |
+| `item_map` / `stores` / `sync_log` Postgres schema | ✅ Done |
 
 ---
 
