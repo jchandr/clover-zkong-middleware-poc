@@ -426,7 +426,7 @@ Clover POS                          Middleware (Node.js/TS)                  Zko
 | Price/catalog update | Clover → Zkong | Clover webhook (`item.create`/`item.update`) | `POST /zk/item/batchImportItem` (`unitName: 1`, raw cents) |
 | Item delete | Clover → Zkong | Clover webhook (`item.delete`) | `POST /zk/item/batchDeleteItem` |
 | Price update | Zkong → Clover | Poller (`ZKONG_POLL_INTERVAL_MS`, default 1000ms) | `POST /zk/erp/item/list?page=&size=` → diff → `POST /v3/merchants/{mId}/items/{id}` |
-| Discount apply/restore | Zkong → Clover | Same poll — reads `custFeature1` (Was) + `custFeature2` (Discount %) | sale = `Was × (1 − d%)` (or `custFeature3` Discount Number) → pushed to Clover |
+| Discount apply/restore | Zkong → Clover | Same poll — reads `custFeature1` (Was) + `custFeature2` (Discount %) | sale = `(Was || base) × (1 − d%)` (or `custFeature3` Discount Number) → pushed to Clover |
 | Promo strategy visibility | Zkong → logs | Poller (1×/min, needs `ZKONG_STORE_ID`) | `POST /zk/strategy/list/1/50?isValid=true` — **blocked by account permission (10030)** |
 
 ### Discount detection — key finding
@@ -441,9 +441,8 @@ Zkong does **not** drive discounts through `price`/`originalPrice`. The dashboar
 | Discount Number | `custFeature3` | Absolute sale price (used directly if set) |
 | Promotion Start / End | `custFeature4` / `custFeature5` | Promo window (not currently enforced) |
 
-The poller computes the sale price and pushes it to Clover. `price` (base) is never
-modified by Zkong for discounts — it stays at the base value, which is what Clover
-restores to when the discount clears.
+The poller computes the sale price and pushes it to both Clover and Zkong main `price` (售价)
+fields. When the discount is cleared, both sides are restored to the original base price.
 
 ### Price units
 
@@ -798,5 +797,4 @@ comparison (`crypto.timingSafeEqual`).
   be granted strategy-menu access in the Zkong dashboard. Only affects logging, not sync.
 - **Discount window enforcement** — Promotion Start/End (`custFeature4`/`custFeature5`) are
   not currently checked; the discount applies whenever `Discount % > 0`.
-- **Mid-promo base-edit conflict** — if the Clover base price is edited while a discount is
-  active, it is reverted to Zkong's base when the discount ends (logged as a conflict).
+- **Clover POS price edits override Zkong discounts.** If an item's price is updated directly in Clover POS, the middleware pushes the new price to Zkong selling price (`price`), clears `custFeature1` (Was) and `custFeature2` (Discount %) in Zkong, and resets `promo_active` to `false`.

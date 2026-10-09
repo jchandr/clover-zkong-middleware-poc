@@ -1,5 +1,6 @@
 import { zkongClient } from "../services/zkong/client";
 import { updateCloverItem } from "../services/clover/client";
+import { batchImportToZkong } from "../services/zkong/items";
 import { findByBarcode, upsertItemMap, ItemMapRow } from "../db/models/item-map";
 import { ensureDefaultStore } from "../db/models/store";
 import { logSync } from "../db/models/sync-log";
@@ -79,45 +80,79 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
         item.custFeature3 as string | number | null | undefined
       );
 
-      let saleCents: number;
-      let promoActive: boolean;
-      if (discountPct > 0 && wasCents > 0) {
-        saleCents = Math.round(wasCents * (1 - discountPct / 100));
-        promoActive = true;
-      } else if (discountNumberCents > 0) {
-        saleCents = discountNumberCents;
-        promoActive = true;
-      } else {
-        saleCents = priceCents;
-        promoActive = false;
-      }
-
       const existing = await findByBarcode(store.id, item.barCode);
 
       if (!existing) {
         continue;
       }
 
-      // Skip only if sale price AND promo state both match what we last pushed
-      if (saleCents === existing.last_pushed_price && promoActive === existing.promo_active) {
+      const baseForDiscount =
+        wasCents > 0
+          ? wasCents
+          : existing.promo_active
+          ? existing.standard_price
+          : priceCents;
+
+      let saleCents: number;
+      let promoActive: boolean;
+      let standardPriceToSave: number;
+
+      if (discountPct > 0) {
+        saleCents = Math.round(baseForDiscount * (1 - discountPct / 100));
+        promoActive = true;
+        standardPriceToSave = baseForDiscount;
+      } else if (discountNumberCents > 0) {
+        saleCents = discountNumberCents;
+        promoActive = true;
+        standardPriceToSave = baseForDiscount;
+      } else {
+        promoActive = false;
+        standardPriceToSave = existing.promo_active ? existing.standard_price : priceCents;
+        saleCents = standardPriceToSave;
+      }
+
+      // Skip only if sale price AND promo state AND Zkong price all match target
+      if (
+        saleCents === existing.last_pushed_price &&
+        promoActive === existing.promo_active &&
+        priceCents === saleCents
+      ) {
         continue;
       }
 
       console.log(
-        `[poller] Zkong change for ${item.barCode}: sale=${saleCents} base=${priceCents} was=${wasCents} discount=${discountPct}% promo=${promoActive} (was promo=${existing.promo_active})`
+        `[poller] Zkong change for ${item.barCode}: sale=${saleCents} base=${standardPriceToSave} was=${wasCents} discount=${discountPct}% promo=${promoActive} (was promo=${existing.promo_active})`
       );
 
       try {
-        // Push the computed sale price to Clover.
+        // Update Clover price
         await updateCloverItem(config.clover.merchantId, existing.clover_item_id, {
           price: saleCents,
         });
+
+        // Update Zkong main price (售价) field on tag
+        await batchImportToZkong([
+          {
+            barCode: item.barCode,
+            itemTitle: String(item.itemTitle || item.barCode),
+            price: String(saleCents),
+            attrCategory: String(item.attrCategory || "default"),
+            attrName: String(item.attrName || "default"),
+            productCode: String(item.productCode || ""),
+            productSku: String(item.productSku || ""),
+            custFeature1: item.custFeature1,
+            custFeature2: item.custFeature2,
+            custFeature3: item.custFeature3,
+            custFeature4: item.custFeature4,
+            custFeature5: item.custFeature5,
+          },
+        ]);
 
         await upsertItemMap({
           store_id: store.id,
           clover_item_id: existing.clover_item_id,
           zkong_barcode: item.barCode,
-          standard_price: priceCents,
+          standard_price: standardPriceToSave,
           last_pushed_price: saleCents,
           promo_active: promoActive,
           zkong_item_id: item.id ? Number(item.id) : null,
@@ -132,7 +167,7 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
           to_price: saleCents,
           reason: promoActive
             ? `Zkong promo for ${item.barCode}: was=${wasCents} discount=${discountPct}% -> sale=${saleCents}`
-            : `Zkong promo ended for ${item.barCode}, restored base=${priceCents}`,
+            : `Zkong promo ended for ${item.barCode}, restored base=${standardPriceToSave}`,
         });
 
         pushedCount++;

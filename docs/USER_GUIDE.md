@@ -23,15 +23,19 @@ Zkong stores discounts in **extended (custFeature) fields**, not in `price`/`ori
 Poller logic (`src/polling/zkong-poll.ts`):
 
 ```
-if Discount % > 0 and Was > 0:   sale = Was × (1 − Discount%/100)
-elif Discount Number > 0:        sale = Discount Number
-else:                            sale = price (base)
+if Discount % > 0:
+    base = Was if Was > 0 else price (base)
+    sale = base × (1 − Discount%/100)
+elif Discount Number > 0:
+    sale = Discount Number
+else:
+    sale = price (base)
 ```
 
-- While a discount is active, Clover `price` = computed sale price.
-- When the discount is cleared, the poller restores Clover to the base `price`.
+- While a discount is active, both Clover and Zkong main `price` (售价) = computed sale price.
+- When the discount is cleared (or `Discount %` removed), the poller restores both Clover and Zkong main `price` back to the original base price.
 - The Clover webhook is **echo-suppressed** during promo sync (no loop).
-- If you edit the Clover base price *while a discount is active*, it is recorded as the new base but **not** pushed to Zkong (Zkong owns the sale price). It is restored when the discount ends. Logged as `SKIPPED_PROMO_ACTIVE`.
+- If you edit the item's price directly in Clover POS (e.g. from `$10.00` to `$20.00`), the middleware updates Zkong's selling price to `2000`, explicitly clears `Was` and `Discount %` in Zkong, and resets `promo_active` to `false`.
 
 ## Price units (important)
 

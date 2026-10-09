@@ -17,6 +17,7 @@ export interface ZkongItem {
   attrName: string;
   productCode?: string;
   productSku?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -37,6 +38,11 @@ export function mapCloverToZkongItem(
     attrName: "default",
     productCode: cloverItem.code || "",
     productSku: cloverItem.sku || "",
+    custFeature1: "",
+    custFeature2: "",
+    custFeature3: "",
+    custFeature4: "",
+    custFeature5: "",
   };
 }
 

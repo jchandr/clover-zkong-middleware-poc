@@ -147,36 +147,7 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
             continue;
           }
 
-          // Promo suppression: while a Zkong discount is active, Zkong owns the
-          // sale price on the tag. Pushing this Clover change would overwrite it.
-          // Record the new base price instead; the poller restores it when the
-          // promo ends (Zkong flips price back to originalPrice).
-          if (existing && existing.promo_active) {
-            console.log(
-              `[sync] promo active for ${item.id}: NOT pushing Clover price ${item.price} to Zkong (recorded as base price ${item.price})`
-            );
-            await upsertItemMap({
-              store_id: store.id,
-              clover_item_id: item.id,
-              zkong_barcode: existing.zkong_barcode,
-              standard_price: item.price,
-              last_pushed_price: existing.last_pushed_price,
-              promo_active: true,
-              zkong_item_id: existing.zkong_item_id,
-              last_zkong_update_time: existing.last_zkong_update_time,
-            });
-            await logSync({
-              item_map_id: existing.id,
-              direction: "clover->zkong",
-              action: "SKIPPED_PROMO_ACTIVE",
-              from_price: existing.standard_price,
-              to_price: item.price,
-              reason: `Zkong promo active for ${item.id}; Clover price recorded as new base, Zkong sale price preserved`,
-            });
-            continue;
-          }
-
-          console.log(`[sync] pushing to Zkong barCode=${zkongItem.barCode}`);
+          console.log(`[sync] pushing to Zkong barCode=${zkongItem.barCode} price=${item.price} (clearing any active Zkong discount)`);
           await batchImportToZkong([zkongItem]);
 
           const mappedRow = await upsertItemMap({
@@ -186,8 +157,8 @@ async function processCloverWebhookAsync(body: CloverWebhookBody): Promise<void>
             standard_price: item.price,
             last_pushed_price: item.price,
             promo_active: false,
-            zkong_item_id: null,
-            last_zkong_update_time: null,
+            zkong_item_id: existing?.zkong_item_id ?? null,
+            last_zkong_update_time: new Date().toISOString(),
           });
 
           await logSync({
