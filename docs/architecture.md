@@ -1,9 +1,9 @@
 # Clover POS <-> Zkong ESL Cloud Middleware
 
 ## Status
-Architecture finalized based on Clover public API docs and Zkong's own API documentation
-(`Zkong API 4.3.docx`, `API-Integration-overview.docx`, Postman collection) found in
-`knowledge_base/`. Ready to move into implementation.
+**Implemented and running.** Bidirectional price sync is live: Clover → Zkong via webhook,
+Zkong → Clover via poller, and Zkong discounts → Clover via extended-field detection.
+See **Implementation Status** below and `docs/USER_GUIDE.md` for usage.
 
 ## Goal
 A Node.js/TypeScript middleware that keeps product catalog, prices, and inventory in sync
@@ -178,6 +178,11 @@ be reflected in Clover automatically**, not just on the shelf label.
   tag, not Clover. We must poll Zkong's `strategy/list` (8.3) to detect when a strategy's
   window opens/closes and write to Clover's `price` at the right moments.
 
+  > ✅ **IMPLEMENTED (2026-10-07).** The poller now does exactly this — but reads the
+  > discount from `custFeature1`/`custFeature2` (Was / Discount %) instead of `strategy/list`,
+  > because empirical testing showed the dashboard's Was/Discount fields are extended fields,
+  > not strategy-driven. See "Discount detection — key finding" above.
+
 ### Follow-on problems this decision creates, and how we resolve them
 
 Selecting Option 2 immediately raises three problems that don't have solutions on the
@@ -316,6 +321,14 @@ duplication of Zkong's scheduling logic, accepted as a tradeoff of this decision
 
 ## Open Question: Which Zkong Mechanism Actually Drives Promo Pricing?
 
+> ✅ **RESOLVED (2026-10-07).** Empirical testing against the live Zkong sandbox showed that
+> none of the three documented mechanisms (`repricingList`, `proStartTime`/`proEndTime`,
+> Activity Strategy) is what the dashboard's **Was** / **Discount %** fields write to. Those
+> dashboard fields map to **extended (custFeature) fields** — `custFeature1`/`custFeature2`/
+> `custFeature3` — which do not modify `price`. The poller reads these directly. See
+> "Discount detection — key finding" under Revised Architecture above. The three-mechanism
+> investigation below is retained for historical context.
+
 Before writing any scheduling/polling code against the Activity Strategy API (section 8),
 a full pass through every file in `knowledge_base/` (docx, both API PDFs, the Postman
 collection, the OCR'd Postman-example PDF, the deployment-requirements PDF, and
@@ -382,54 +395,61 @@ Clover POS                          Middleware (Node.js/TS)                  Zko
 ┌───────────┐   webhook (push)      ┌──────────────────────┐   REST (push)   ┌───────────┐
 │           │ ─────────────────────>│                      │ ───────────────>│           │
 │           │  item/inventory events│   Sync Engine         │ batchImportItem │           │
-│           │                       │                      │                 │           │
+│           │                       │                      │  (unitName: 1)  │           │
 │           │   REST (push)         │                      │  poll (interval)│           │
 │           │ <─────────────────────│                      │ ───────────────>│           │
 │           │  apply Zkong-side     │                      │  /zk/erp/item/  │           │
-│           │  changes              │                      │  list (diff by  │           │
-│           │                       │                      │  updateTime)    │           │
+│           │  price + discount     │                      │  list?page=&size│           │
+│           │                       │                      │  (query params) │           │
 └───────────┘                       │                      │                 └───────────┘
-                                     │  reconciliation poll  │ ───────────────>
-                                     │  (lower frequency)     │  integratedLogPage
-                                     └──────────────────────┘
-                                              │
-                                              ▼
-                                     ┌──────────────────┐
-                                     │  SQLite (state):  │
-                                     │  - last updateTime │
-                                     │    per barcode     │
-                                     │  - sync log/audit  │
-                                     └──────────────────┘
+                                      │  strategy poll       │ ───────────────>
+                                      │  (visibility only)    │  /zk/strategy/  │
+                                      │                      │  list (1/min)   │
+                                      └──────────────────────┘
+                                               │
+                                               ▼
+                                      ┌──────────────────┐
+                                      │  Postgres (state):│
+                                      │  - item_map      │
+                                      │    (barcode map,  │
+                                      │     last_pushed,  │
+                                      │     promo_active) │
+                                      │  - sync_log      │
+                                      │  - stores        │
+                                      └──────────────────┘
 ```
 
-### Sync flows
+### Sync flows (as implemented)
 
 | Flow | Direction | Trigger | Mechanism |
 |------|-----------|---------|-----------|
-| Price/catalog update | Clover -> Zkong | Clover webhook (`item.update`, `item.create`) | `POST /zk/item/batchImportItem` |
-| Item delete | Clover -> Zkong | Clover webhook (`item.delete`) | `POST /zk/item/batchDeleteItem` |
-| Inventory update | Clover -> Zkong | Clover webhook (`inventory.update`) | `POST /zk/item/batchImportItem` (stock fields) |
-| Price/catalog update | Zkong -> Clover | Polling (interval, e.g. every 5 min) | `POST /zk/erp/item/list`, diff by `updateTime` |
-| Write reconciliation | Middleware self-check | Polling (lower frequency, e.g. every 15-30 min) | `POST /zk/integratedLog/integratedLogPage` |
-| Tag hardware health (optional) | Middleware self-check | Polling (low frequency) | `POST /zk/erp/esl/list` / `adminBusinessInfoList` |
+| Price/catalog update | Clover → Zkong | Clover webhook (`item.create`/`item.update`) | `POST /zk/item/batchImportItem` (`unitName: 1`, raw cents) |
+| Item delete | Clover → Zkong | Clover webhook (`item.delete`) | `POST /zk/item/batchDeleteItem` |
+| Price update | Zkong → Clover | Poller (`ZKONG_POLL_INTERVAL_MS`, default 1000ms) | `POST /zk/erp/item/list?page=&size=` → diff → `POST /v3/merchants/{mId}/items/{id}` |
+| Discount apply/restore | Zkong → Clover | Same poll — reads `custFeature1` (Was) + `custFeature2` (Discount %) | sale = `Was × (1 − d%)` (or `custFeature3` Discount Number) → pushed to Clover |
+| Promo strategy visibility | Zkong → logs | Poller (1×/min, needs `ZKONG_STORE_ID`) | `POST /zk/strategy/list/1/50?isValid=true` — **blocked by account permission (10030)** |
 
-### Design implications
-- **No partial payloads to Zkong.** Because `emptyNeedDelete` defaults to overwrite-with-empty,
-  every `batchImportItem` call must include the full known state of each item, not just the
-  changed field.
-- **Idempotency key:** `barCode` is the natural dedup/upsert key on the Zkong side; Clover's
-  `itemId`/SKU needs to be mapped to `barCode` consistently (mapping table in local DB).
-  Zkong SKU field is `productSku`, but the actual bind/upsert key throughout the API is
-  `barCode` -- keep this straight in the data model to avoid create-vs-update ambiguity.
-- **Conflict resolution:** last-write-wins by timestamp. Since Zkong's `updateTime` is
-  authoritative for that side and Clover has its own webhook timestamp, store both and log
-  conflicts rather than silently dropping one side's change.
-- **Re-auth handling:** wrap all Zkong calls with a 401 -> re-login -> retry-once pattern
-  (token TTL is undocumented).
-- **No async confirmation of physical tag render.** If we need to know a tag actually
-  displayed the update (not just that Zkong's DB accepted it), that requires a follow-up
-  poll of `/zk/erp/esl/list` for that barcode's `lastCommunicationTime`/`state` -- treat
-  as optional/future scope, not part of MVP sync loop.
+### Discount detection — key finding
+
+Zkong does **not** drive discounts through `price`/`originalPrice`. The dashboard's
+**Was** / **Discount %** / **Discount Number** fields are **extended (custFeature) fields**:
+
+| Dashboard field | API field | Meaning |
+|-----------------|-----------|---------|
+| Was | `custFeature1` | Original price the discount is computed from |
+| Discount % | `custFeature2` | Percentage off |
+| Discount Number | `custFeature3` | Absolute sale price (used directly if set) |
+| Promotion Start / End | `custFeature4` / `custFeature5` | Promo window (not currently enforced) |
+
+The poller computes the sale price and pushes it to Clover. `price` (base) is never
+modified by Zkong for discounts — it stays at the base value, which is what Clover
+restores to when the discount clears.
+
+### Price units
+
+**Both Clover and Zkong use cents (integers).** `batchImportItem` is called with
+`unitName: 1` (raw value — Zkong does not divide by 100). Earlier `unitName: 0` bug
+caused `870000` to be stored as `8700`.
 
 ---
 
@@ -464,6 +484,7 @@ down.
   - Explicitly NOT yet implemented: parsing Clover's actual webhook envelope
     (`merchants[mId].{items,inventory,...}`) into sync actions -- current handler only logs
     and acks. That's the next piece of sync-engine work, not a security gap.
+    **Update: this is now implemented** (see "Sync engine" below).
 - **Docker Compose + Cloudflare Tunnel** (`docker-compose.yml`, `cloudflared/`): two
   services, `middleware` and `cloudflared`, on a shared bridge network (`poc-net`) so
   `cloudflared` can reach the middleware container by service name
@@ -495,6 +516,8 @@ down.
     review, Dockerfile logic review, and `sh -n` syntax-checking `entrypoint.sh`. The Node
     build/typecheck/runtime smoke tests were run directly via a locally-installed Node, not
     through Docker.)
+    **Update: the stack is now running** — middleware, Postgres (`db`), and cloudflared are up
+    via `docker compose up -d --build`, and the user is testing the live sync flow.
 
 ### Environment setup used for local verification (this sandbox)
 
@@ -505,71 +528,77 @@ extraction), `7zip`, `poppler-utils` (`pdftotext`/`pdftoppm`), and `tesseract-oc
 documentation investigation and local code verification only -- they are not part of the
 project's runtime and are not referenced by the Dockerfiles.
 
+### Sync engine (implemented and running)
+
+- **Clover → Zkong** (`src/webhooks/handlers/clover.ts`): parses the `merchants[mId]` envelope,
+  fetches the full item via `GET /v3/merchants/{mId}/items/{id}`, maps it to a Zkong item, and
+  upserts via `POST /zk/item/batchImportItem`. Deletes route to `batchDeleteItem`.
+  - **Barcode preservation:** if an item is already mapped in `item_map`, the existing
+    `zkong_barcode` is reused so re-syncing never creates a duplicate Zkong product.
+  - **Echo suppression:** if the Clover price equals `last_pushed_price`, the webhook is
+    ignored (prevents poll ↔ webhook loops).
+  - **Promo suppression:** while `promo_active` is true, Clover price changes are **not**
+    pushed to Zkong (Zkong owns the sale price). The new base is recorded and restored when
+    the discount ends.
+- **Zkong → Clover poller** (`src/polling/zkong-poll.ts`): pages `POST /zk/erp/item/list`
+  (`page`/`size` as query params), diffs against `item_map`, and pushes changes to Clover
+  via `POST /v3/merchants/{mId}/items/{id}`.
+  - **Discount logic:** reads `custFeature1` (Was) + `custFeature2` (Discount %) and computes
+    sale = `Was × (1 − d%)` (or `custFeature3` Discount Number directly). Pushes sale price
+    to Clover while active; restores base price when cleared.
+  - **Strategy visibility:** `POST /zk/strategy/list` (1×/min) logs active promo windows.
+    Requires `ZKONG_STORE_ID` and an account with strategy-menu permission (currently blocked
+    by error `10030`).
+- **Postgres persistence** (`src/db/`): `item_map` (barcode map, `standard_price`,
+  `last_pushed_price`, `promo_active`), `sync_log` (audit trail), `stores`. Schema
+  auto-created on startup; `promo_active` added via one-time `ALTER TABLE` migration.
+- **Auth** (`src/services/zkong/`): RSA login flow with token caching and 401 → re-login →
+  retry-once.
+
 ---
 
 ## Project Structure
 
-Reflects the actual repo layout. Items marked `(planned)` are in the target design from
-earlier planning but not yet created; everything else exists and has been verified per the
-Implementation Status section above.
+Reflects the actual repo layout as implemented.
 
 ```
 cloverPosDemo/
 ├── src/
 │   ├── config/
 │   │   └── env.ts               # Clover/Zkong config + CLOVER_AUTH_CODE
-│   ├── services/                 (planned)
+│   ├── services/
 │   │   ├── clover/
-│   │   │   ├── client.ts
-│   │   │   ├── auth.ts
-│   │   │   ├── items.ts
-│   │   │   └── inventory.ts
-│   │   ├── zkong/
-│   │   │   ├── client.ts        # axios client + 401 retry-once wrapper
-│   │   │   ├── auth.ts          # getErpPublicKey -> RSA encrypt -> login -> token cache
-│   │   │   ├── items.ts         # batchImportItem, batchDeleteItem, erp/item/list, getItemByBarCodeAndExternalStoreId
-│   │   │   └── logs.ts          # integratedLogPage reconciliation
-│   │   └── sync/
-│   │       ├── engine.ts
-│   │       ├── price-sync.ts
-│   │       ├── inventory-sync.ts
-│   │       └── catalog-sync.ts
+│   │   │   └── client.ts          # getCloverItem, updateCloverItem
+│   │   └── zkong/
+│   │       ├── client.ts        # axios client + 401 retry-once wrapper
+│   │       ├── auth.ts          # getErpPublicKey -> RSA encrypt -> login -> token cache
+│   │       └── items.ts         # batchImportItem, batchDeleteItem, mapCloverToZkongItem
 │   ├── webhooks/
 │   │   ├── server.ts            # Express app: GET /health, POST /webhooks/clover
 │   │   └── handlers/
-│   │       └── clover.ts        # verificationCode handshake + X-Clover-Auth check (done)
-│   ├── polling/                  (planned)
-│   │   ├── zkong-poll.ts        # /zk/erp/item/list diff-by-updateTime loop
-│   │   └── reconcile.ts         # integratedLogPage check loop
-│   ├── db/                       (planned)
-│   │   ├── connection.ts
+│   │       └── clover.ts        # verificationCode + X-Clover-Auth + sync to Zkong
+│   ├── polling/
+│   │   └── zkong-poll.ts        # Zkong → Clover poller + discount logic
+│   ├── db/
+│   │   ├── connection.ts        # Postgres pool + initDb
 │   │   └── models/
-│   │       ├── item-map.ts      # Clover itemId <-> Zkong barCode mapping + last updateTime seen
-│   │       └── sync-log.ts
-│   ├── middleware/               (planned -- rate-limit/logger not yet added)
-│   │   ├── auth.ts
-│   │   ├── rate-limit.ts
-│   │   └── logger.ts
-│   ├── utils/                    (planned)
-│   │   ├── mapper.ts
-│   │   ├── rsa.ts               # RSA encryption helper for Zkong login
-│   │   └── retry.ts
-│   ├── types/                    (planned)
-│   │   ├── clover.ts
-│   │   └── zkong.ts
-│   └── index.ts                 # entrypoint, starts Express server
+│   │       ├── item-map.ts      # Clover itemId ↔ Zkong barCode + promo state
+│   │       ├── store.ts         # ensureDefaultStore
+│   │       └── sync-log.ts      # audit trail
+│   └── index.ts                 # entrypoint: starts Express + Zkong poller
 ├── cloudflared/
 │   ├── Dockerfile               # alpine + cloudflared binary (has a shell, unlike official image)
 │   ├── entrypoint.sh            # idle-until-configured / run-tunnel switch
 │   └── config.example.yml       # template for /root/.cloudflared/config.yml
 ├── .env.example
 ├── .gitignore
-├── docker-compose.yml            # middleware + cloudflared services on shared network
+├── docker-compose.yml            # middleware + db + cloudflared services on shared network
 ├── Dockerfile                    # middleware container (node:20-alpine)
 ├── tsconfig.json
 ├── package.json
 └── docs/
-    └── architecture.md   (this file)
+    ├── USER_GUIDE.md             # setup, discount flow, migration (this branch)
+    └── architecture.md           # this file
 ```
 
 ### Environment variables
@@ -595,22 +624,25 @@ PORT=3000
 # The "Clover Auth Code" from Your Apps > App Settings > Webhooks in the
 # Clover Developer Dashboard. Required for webhook requests to be accepted.
 CLOVER_AUTH_CODE=
+ZKONG_API_BASE=https://esl-eu.zkong.com
+ZKONG_ACCOUNT=
+ZKONG_PASSWORD=
+ZKONG_MERCHANT_ID=
+ZKONG_AGENCY_ID=
+ZKONG_STORE_ID=
+ZKONG_POLL_INTERVAL_MS=1000
 ```
-
-Not yet added to `.env.example` (planned, per the polling/reconciliation design above):
-`ZKONG_POLL_INTERVAL_MS`, `RECONCILE_INTERVAL_MS`, `DB_PATH`.
 
 ### Dependencies
 
-**Actually installed** (`package.json`): `express` (5.1.0), `dotenv` (17.2.3 -- bumped from
-the originally planned 4.0.4, which does not exist on the npm registry), `typescript`,
-`ts-node-dev`, `@types/express`, `@types/node`.
+**Installed** (`package.json`): `express` (5.1.0), `dotenv` (17.2.3), `axios` (HTTP client for
+Clover/Zkong REST calls), `pg` (Postgres client), `typescript`, `ts-node-dev`, `@types/express`,
+`@types/node`, `@types/pg`.
 
-**Planned, not yet added:** `axios` (HTTP client for Clover/Zkong REST calls),
-`better-sqlite3` (local state DB), `node-cron` (polling scheduler), `winston` (logging),
-`zod` (validation). Node's built-in `crypto` module will be used for both the Zkong RSA
-login flow and the Clover webhook auth comparison (already in use for the latter, via
-`crypto.timingSafeEqual`).
+**Not used:** `better-sqlite3` (replaced by Postgres), `node-cron` (replaced by `setInterval`),
+`winston` (replaced by `console`), `zod` (replaced by manual validation). Node's built-in
+`crypto` module is used for both the Zkong RSA login flow and the Clover webhook auth
+comparison (`crypto.timingSafeEqual`).
 
 ---
 
@@ -716,23 +748,55 @@ login flow and the Clover webhook auth comparison (already in use for the latter
     Implemented both in `src/webhooks/handlers/clover.ts` using `crypto.timingSafeEqual`,
     fail-closed if `CLOVER_AUTH_CODE` is unset. Verified with four manual test cases (missing
     header, wrong header, correct header, verificationCode handshake) -- all passed.
+18. **User switched to the `alternate` branch** (Clover↔Zkong communication only, no UI) and
+    asked to implement the discount-aware sync. Clarified requirements: (a) poll Zkong for
+    active promo details, (b) detect discounts by reading Zkong fields, (c) push sale price
+    to Clover during the promo window and restore base when it ends, (d) suppress the Clover
+    webhook from overwriting Zkong's sale price while a discount is active, (e) do not store
+    the "Was" price (ESL display only), (f) both sides use cents.
+19. **Implemented the Zkong → Clover poller** (`src/polling/zkong-poll.ts`): pages
+    `/zk/erp/item/list`, diffs against `item_map`, pushes price changes to Clover. Added
+    `promo_active` to `item_map`, echo suppression via `last_pushed_price`, and a
+    `ZKONG_STORE_ID`-gated strategy-list visibility poll.
+20. **Fixed `zkongPriceToCents`** — removed a `num < 100 ? num*100 : num` heuristic that
+    corrupted sub-$1 prices.
+21. **Fixed `erp/item/list` request** — `page`/`size` must be query params (not body), and
+    `merchantId`/`agencyId` are not valid params (caused `11111 操作失败`). Pagination now
+    derives total pages from `totalElements`.
+22. **Fixed price-unit bug** — `batchImportItem` was sending `unitName: 0` (Zkong divides by
+    100), so Clover `870000` became Zkong `8700`. Changed to `unitName: 1` (raw cents).
+    Clover and Zkong both store cents.
+23. **Fixed duplicate Zkong items** — the webhook handler now preserves the existing
+    `zkong_barcode` for mapped items, so re-syncing never creates a duplicate.
+24. **Discovered Zkong discounts are extended fields, not price fields.** Empirical testing
+    (debug dump of `custFeature1`–`custFeature50`) showed the dashboard's **Was** = `custFeature1`,
+    **Discount %** = `custFeature2`, **Discount Number** = `custFeature3`. These do not modify
+    `price`/`originalPrice`. The poller was updated to compute sale = `Was × (1 − d%)` and
+    push it to Clover. Verified end-to-end: setting Was=1000000 + Discount=15% → Clover $8,500;
+    clearing → Clover restored to base $8,300.
+25. **Strategy visibility blocked by account permission** — `/zk/strategy/list` returns `10030
+    你无权限访问` (no menu/store access). Requires granting the ERP account strategy-menu
+    access in the Zkong dashboard. Does not affect price sync.
+26. **Documented everything** — updated `docs/USER_GUIDE.md` (sync directions, discount flow,
+    price units, migration, limitations), `README.md` (env vars, migration SQL, implementation
+    status, project structure), and this architecture doc.
 
 ## Open Items / Next Steps
-- **Resolve the three-mechanism promo ambiguity empirically** against a live Zkong sandbox
-  (create a promo via each of Activity Strategy / `repricingList` / `proStartTime`, poll
-  `/zk/erp/item/list`, see which one changes the polled `price`) before writing any Option 2
-  scheduler/poller code.
-- Confirm Zkong token TTL empirically (docs don't state one) once we have live credentials
-  wired up.
-- Design and implement the `item_map` / `stores` SQLite schema described above (not yet
-  created -- `src/db/` doesn't exist yet).
-- Implement the Zkong auth client (RSA login flow) -- next planned piece, since every other
-  Zkong call depends on it.
-- Implement Clover webhook envelope parsing (`merchants[mId].{items,inventory,...}`) and
-  route events into the (not yet built) sync engine -- current handler only logs and acks
-  after passing the auth check.
-- Actually run `docker compose up` against a real Cloudflare account and a real Clover
-  sandbox app once both are available, to verify the tunnel end-to-end (not yet done in this
-  working environment -- no `docker` binary available here).
-- Add `axios`, `better-sqlite3`, `node-cron`, `winston`, `zod` to `package.json` as sync/
-  polling implementation begins.
+- **Resolve the three-mechanism promo ambiguity** — ✅ **RESOLVED.** Empirical testing
+  showed Zkong discounts are stored in **extended (custFeature) fields**, not in
+  `price`/`originalPrice`/`repricingList`. The poller reads `custFeature1`/`custFeature2`/
+  `custFeature3` and computes the sale price. See "Discount detection — key finding" above.
+- **Confirm Zkong token TTL empirically** — token is cached and refreshed on 401; exact TTL
+  still undocumented.
+- **Design and implement the `item_map` / `stores` schema** — ✅ **DONE** (Postgres, not SQLite).
+- **Implement the Zkong auth client** — ✅ **DONE** (RSA login, token cache, 401 retry).
+- **Implement Clover webhook envelope parsing** — ✅ **DONE** (see "Sync engine" above).
+- **Actually run `docker compose up`** — ✅ **DONE** (stack is running and being tested).
+- **Add dependencies** — `axios` added; `pg` used instead of `better-sqlite3`; `node-cron`,
+  `winston`, `zod` not needed (native `setInterval`, `console`, manual validation).
+- **Strategy visibility** — blocked by account permission (`10030`). Needs the ERP account to
+  be granted strategy-menu access in the Zkong dashboard. Only affects logging, not sync.
+- **Discount window enforcement** — Promotion Start/End (`custFeature4`/`custFeature5`) are
+  not currently checked; the discount applies whenever `Discount % > 0`.
+- **Mid-promo base-edit conflict** — if the Clover base price is edited while a discount is
+  active, it is reverted to Zkong's base when the discount ends (logged as a conflict).
