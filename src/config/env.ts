@@ -20,7 +20,6 @@ export const config = {
     ),
     merchantId: process.env.CLOVER_MERCHANT_ID ?? "",
     clientId: process.env.CLOVER_CLIENT_ID ?? "",
-    clientSecret: process.env.CLOVER_CLIENT_SECRET ?? "",
     // Merchant API Token for POC: Developer Dashboard → Test Merchants → <merchant> → API Token
     // Used as `Authorization: Bearer <token>` for GET /v3/merchants/{mId}/items/{itemId}
     apiToken: process.env.CLOVER_API_TOKEN ?? "",

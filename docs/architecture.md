@@ -609,7 +609,6 @@ Reflects `.env.example` as actually written (see file for authoritative source).
 CLOVER_API_BASE=https://sandbox.dev.clover.com/v3/merchants
 CLOVER_MERCHANT_ID=
 CLOVER_CLIENT_ID=
-CLOVER_CLIENT_SECRET=
 
 # Zkong
 ZKONG_API_BASE=https://esl-eu.zkong.com

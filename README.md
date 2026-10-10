@@ -41,7 +41,6 @@ Copy `.env.example` → `.env` and fill in every value:
 | Variable | Where to find it |
 |----------|------------------|
 | `CLOVER_CLIENT_ID` | Clover Developer Dashboard → Your Apps → [App] → App Settings → **Client ID** |
-| `CLOVER_CLIENT_SECRET` | Clover Developer Dashboard → Your Apps → [App] → App Settings → **Client Secret** |
 | `CLOVER_MERCHANT_ID` | Clover Developer Dashboard → Test Merchants → [Merchant] → **Merchant ID** (also in URL: `https://sandbox.dev.clover.com/dashboard/m/[MERCHANT_ID]`) |
 | `CLOVER_AUTH_CODE` | Clover Developer Dashboard → Your Apps → [App] → App Settings → **Webhooks** section → **Clover Auth Code** (shown after webhook URL is verified) |
 
