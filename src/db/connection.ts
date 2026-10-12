@@ -62,6 +62,29 @@ export async function initDb(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS integrations (
+      id SERIAL PRIMARY KEY,
+      integration_id UUID NOT NULL UNIQUE,
+      registering_business_name TEXT NOT NULL,
+      registering_business_email TEXT NOT NULL,
+      selected_pos TEXT NOT NULL,
+      pos_configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+      zkong_configuration JSONB NOT NULL DEFAULT '{}'::jsonb,
+      field_mappings JSONB NOT NULL DEFAULT '{}'::jsonb,
+      sync_rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_integrations_id ON integrations(integration_id);`
+  );
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_integrations_status ON integrations(status);`
+  );
 }
 
 export async function closePool(): Promise<void> {

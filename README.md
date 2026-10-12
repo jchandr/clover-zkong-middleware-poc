@@ -34,42 +34,20 @@ docker compose exec cloudflared sh
 
 ## Environment Variables (`.env`)
 
-Copy `.env.example` → `.env` and fill in every value:
+Per the dynamic onboarding architecture, all merchant POS keys and Zkong account credentials are set dynamically via the onboarding UI (`/onboarding`) and persisted securely in the database (`integrations` table).
 
-### Clover
+The application `.env` strictly contains only infrastructure-level settings:
 
-| Variable | Where to find it |
-|----------|------------------|
-| `CLOVER_CLIENT_ID` | Clover Developer Dashboard → Your Apps → [App] → App Settings → **Client ID** |
-| `CLOVER_MERCHANT_ID` | Clover Developer Dashboard → Test Merchants → [Merchant] → **Merchant ID** (also in URL: `https://sandbox.dev.clover.com/dashboard/m/[MERCHANT_ID]`) |
-| `CLOVER_AUTH_CODE` | Clover Developer Dashboard → Your Apps → [App] → App Settings → **Webhooks** section → **Clover Auth Code** (shown after webhook URL is verified) |
+```env
+PORT=3000
+ZKONG_POLL_INTERVAL_MS=60000
 
-**How to get `CLOVER_AUTH_CODE`:**
-1. Register your app in Clover Developer Dashboard (sandbox or production)
-2. Install the app on your test merchant
-3. In App Settings → Webhooks, enter your public webhook URL (e.g., `https://your-subdomain.yourdomain.com/webhooks/clover`)
-4. Click **Send Verification Code** → copy the code from the POST body → paste it in the Verification Code field → **Verify**
-5. The **Clover Auth Code** appears in the Webhooks section — copy it to `CLOVER_AUTH_CODE`
-
-> **Note:** Use sandbox base URL (`https://sandbox.dev.clover.com/v3/merchants`) for development.
-
-### Zkong
-
-| Variable | Where to find it |
-|----------|------------------|
-| `ZKONG_ACCOUNT` | Your Zkong Cloud portal login username |
-| `ZKONG_PASSWORD` | Your Zkong Cloud portal login password |
-| `ZKONG_MERCHANT_ID` | Zkong portal → Merchant/Store management → **Merchant ID** |
-| `ZKONG_AGENCY_ID` | Zkong portal → Agency/Reseller management → **Agency ID** (if applicable) |
-| `ZKONG_API_BASE` | Default: `https://esl-eu.zkong.com` (EU server) |
-| `ZKONG_STORE_ID` | Zkong **store** ID from `GET /zk/store/storeList` (the `storeId` field, a large integer — **not** the org ID). Optional; enables promo strategy visibility logging. |
-| `ZKONG_POLL_INTERVAL_MS` | Zkong → Clover poller interval in ms (default: `60000`, use `1000` for testing) |
-
-### App
-
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Middleware HTTP port (default: `3000`) |
+# Database — Postgres
+POSTGRES_DB=clover_zkong
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong
+```
 
 ---
 

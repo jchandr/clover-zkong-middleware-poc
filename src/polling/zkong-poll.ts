@@ -1,3 +1,4 @@
+import axios from "axios";
 import { zkongClient } from "../services/zkong/client";
 import { updateCloverItem } from "../services/clover/client";
 import { batchImportToZkong } from "../services/zkong/items";
@@ -6,6 +7,8 @@ import { ensureDefaultStore } from "../db/models/store";
 import { logSync } from "../db/models/sync-log";
 import { config } from "../config/env";
 import { getPool } from "../db/connection";
+import { IntegrationsRepo, IntegrationRow, IntegrationStatus, ZkongConfig } from "../db/models/integration";
+import { encryptPassword } from "../utils/rsa";
 
 export interface ZkongApiItem {
   id?: number | string;
@@ -31,10 +34,93 @@ export function zkongPriceToCents(priceStr: string | number | undefined | null):
   return Math.round(num);
 }
 
-export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number }> {
-  console.log("[poller] Polling Zkong items...");
+// Per-integration poller: polls Zkong for a specific LIVE integration
+// Per-integration Zkong token cache
+const integrationTokenCache = new Map<
+  string,
+  { token: string; fetchedAt: number }
+>();
 
-  const store = await ensureDefaultStore("", config.clover.merchantId);
+async function getIntegrationZkongToken(
+  zkConfig: ZkongConfig
+): Promise<string> {
+  const cacheKey = `${zkConfig.account}@${zkConfig.apiBase || "https://esl-eu.zkong.com"}`;
+  const cached = integrationTokenCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt < 6 * 24 * 60 * 60 * 1000) {
+    return cached.token;
+  }
+
+  const base = (zkConfig.apiBase || "https://esl-eu.zkong.com").replace(/\/$/, "");
+  const account = zkConfig.account || "";
+  const password = zkConfig.password || "";
+
+  if (!account || !password) {
+    throw new Error("Zkong account and password are required");
+  }
+
+  // 1. Get RSA public key
+  const keyRes = await axios.get<{ success: boolean; code: number; message: string; data: string }>(
+    `${base}/zk/user/getErpPublicKey`,
+    { timeout: 10_000 }
+  );
+  if (!keyRes.data.success || !keyRes.data.data) {
+    throw new Error(`getErpPublicKey failed: ${keyRes.data.code} ${keyRes.data.message}`);
+  }
+  const publicKeyBase64 = keyRes.data.data.trim();
+
+  // 2. Encrypt password
+  const encryptedPassword = encryptPassword(publicKeyBase64, password);
+
+  // 3. Login
+  const loginRes = await axios.post<{
+    success: boolean;
+    code: number;
+    message: string;
+    data: { token: string };
+  }>(
+    `${base}/zk/user/login`,
+    {
+      account,
+      password: encryptedPassword,
+      loginType: 3,
+    },
+    {
+      timeout: 10_000,
+      headers: { "Content-Type": "application/json;charset=utf-8" },
+    }
+  );
+
+  if (!loginRes.data.success || !loginRes.data.data?.token) {
+    throw new Error(`Zkong login failed: ${loginRes.data.code} ${loginRes.data.message}`);
+  }
+
+  const token = loginRes.data.data.token;
+  integrationTokenCache.set(cacheKey, { token, fetchedAt: now });
+  return token;
+}
+
+export async function pollIntegrationOnce(
+  integration: IntegrationRow
+): Promise<{ fetched: number; pushed: number }> {
+  console.log(
+    `[poller] Polling Zkong for integration ${integration.integration_id} (${integration.registering_business_name})`
+  );
+
+  const zkConfig = integration.zkong_configuration as ZkongConfig;
+  if (!zkConfig.account || !zkConfig.password || !zkConfig.merchantId) {
+    console.warn(
+      `[poller] Integration ${integration.integration_id} missing Zkong credentials, skipping`
+    );
+    return { fetched: 0, pushed: 0 };
+  }
+
+  // Get or create default store for this integration
+  const store = await ensureDefaultStore(
+    "",
+    (integration.pos_configuration as { merchantId?: string }).merchantId || ""
+  );
+
   let pageNum = 1;
   const pageSize = 200;
   let totalPages = 1;
@@ -42,16 +128,20 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
   let pushedCount = 0;
 
   do {
-    // Per API 3.8: page/size are QUERY params; body takes only optional
-    // filters (storeId, attrClass, attrName, pcItemTitle, pcBarCode, ...).
-    // merchantId/agencyId are NOT valid params here (causes 11111).
-    // Omitting storeId returns merchant-level products.
-    const res = await zkongClient.post<{
+    const res = await axios.post<{
       success: boolean;
       code: number;
       message: string;
       data: ZkongItemListResponse;
-    }>("/zk/erp/item/list", {}, { params: { page: pageNum, size: pageSize } });
+    }>(
+      `${zkConfig.apiBase || "https://esl-eu.zkong.com"}/zk/erp/item/list`,
+      {},
+      {
+        params: { page: pageNum, size: pageSize },
+        headers: { Authorization: await getIntegrationZkongToken(integration.zkong_configuration) },
+        timeout: 15000,
+      }
+    );
 
     if (!res.data.success || !res.data.data) {
       console.error(
@@ -67,10 +157,6 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
     for (const item of list) {
       if (!item.barCode) continue;
 
-      // Zkong stores the discount in extended (custFeature) fields, not in
-      // price/originalPrice. Per dashboard layout:
-      //   custFeature1 = Was, custFeature2 = Discount %, custFeature3 = Discount Number
-      // Sale price = Was * (1 - Discount%/100), or Discount Number directly.
       const priceCents = zkongPriceToCents(item.price);
       const wasCents = zkongPriceToCents(
         item.custFeature1 as string | number | null | undefined
@@ -125,28 +211,39 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
       );
 
       try {
-        // Update Clover price
-        await updateCloverItem(config.clover.merchantId, existing.clover_item_id, {
-          price: saleCents,
-        });
+        // Update Clover price using integration's POS config
+        const posConfig = integration.pos_configuration;
+        const cloverMerchantId = (integration.pos_configuration as { merchantId?: string }).merchantId;
+        if (!cloverMerchantId) {
+          console.warn(
+            `[poller] Integration ${integration.integration_id} missing Clover merchantId, skipping Clover update`
+          );
+        } else {
+          await updateCloverItem(cloverMerchantId, existing.clover_item_id, {
+            price: saleCents,
+          });
+        }
 
         // Update Zkong main price (售价) field on tag
-        await batchImportToZkong([
-          {
-            barCode: item.barCode,
-            itemTitle: String(item.itemTitle || item.barCode),
-            price: String(saleCents),
-            attrCategory: String(item.attrCategory || "default"),
-            attrName: String(item.attrName || "default"),
-            productCode: String(item.productCode || ""),
-            productSku: String(item.productSku || ""),
-            custFeature1: item.custFeature1,
-            custFeature2: item.custFeature2,
-            custFeature3: item.custFeature3,
-            custFeature4: item.custFeature4,
-            custFeature5: item.custFeature5,
-          },
-        ]);
+        await batchImportToZkong(
+          [
+            {
+              barCode: item.barCode,
+              itemTitle: String(item.itemTitle || item.barCode),
+              price: String(saleCents),
+              attrCategory: String(item.attrCategory || "default"),
+              attrName: String(item.attrName || "default"),
+              productCode: String(item.productCode || ""),
+              productSku: String(item.productSku || ""),
+              custFeature1: item.custFeature1,
+              custFeature2: item.custFeature2,
+              custFeature3: item.custFeature3,
+              custFeature4: item.custFeature4,
+              custFeature5: item.custFeature5,
+            },
+          ],
+          { storeId: (integration.zkong_configuration as ZkongConfig).storeId }
+        );
 
         await upsertItemMap({
           store_id: store.id,
@@ -191,8 +288,45 @@ export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number
     pageNum++;
   } while (pageNum <= totalPages);
 
-  console.log(`[poller] Poll finished. Fetched ${fetchedCount} items, updated ${pushedCount} in Clover.`);
+  console.log(
+    `[poller] Poll finished for ${integration.integration_id}. Fetched ${fetchedCount} items, updated ${pushedCount} in Clover.`
+  );
   return { fetched: fetchedCount, pushed: pushedCount };
+}
+
+export async function pollZkongOnce(): Promise<{ fetched: number; pushed: number }> {
+  console.log("[poller] Polling Zkong items for all LIVE integrations...");
+
+  const liveIntegrations = await IntegrationsRepo.findAll({
+    status: IntegrationStatus.LIVE,
+    includeDeleted: false,
+  });
+
+  if (liveIntegrations.list.length === 0) {
+    console.log("[poller] No LIVE integrations found, skipping poll");
+    return { fetched: 0, pushed: 0 };
+  }
+
+  let totalFetched = 0;
+  let totalPushed = 0;
+
+  for (const integration of liveIntegrations.list) {
+    try {
+      const result = await pollIntegrationOnce(integration);
+      totalFetched += result.fetched;
+      totalPushed += result.pushed;
+    } catch (err) {
+      console.error(
+        `[poller] Error polling integration ${integration.integration_id}:`,
+        (err as Error).message
+      );
+    }
+  }
+
+  console.log(
+    `[poller] Poll finished for ${liveIntegrations.list.length} LIVE integrations. Fetched ${totalFetched} items, updated ${totalPushed} in Clover.`
+  );
+  return { fetched: totalFetched, pushed: totalPushed };
 }
 
 export interface ZkongStrategy {

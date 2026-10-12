@@ -112,18 +112,16 @@ docker compose exec db psql -U postgres -d clover_zkong \
 
 ### Environment variables
 
-See `.env.example`. Key Zkong variables:
+All POS and Zkong credentials are now configured dynamically via the web onboarding GUI (`/onboarding`) and saved to the database. The `.env` file strictly contains only core infrastructure settings:
 
-| Variable | Description |
-|----------|-------------|
-| `ZKONG_ACCOUNT` / `ZKONG_PASSWORD` | Zkong portal login |
-| `ZKONG_MERCHANT_ID` | Zkong merchant ID |
-| `ZKONG_AGENCY_ID` | Zkong agency/reseller ID |
-| `ZKONG_API_BASE` | Default `https://esl-eu.zkong.com` |
-| `ZKONG_STORE_ID` | Zkong **store** ID (from `GET /zk/store/storeList`, the `storeId` field). Optional — enables promo strategy visibility logging. |
-| `ZKONG_POLL_INTERVAL_MS` | Poller interval (default `60000`; `1000` for testing) |
-
-> **Note:** `ZKONG_STORE_ID` is the native Zkong store ID (large integer), **not** the organization ID from `organization/getList` and **not** the `id` field — use the `storeId` field from `storeList`.
+```env
+PORT=3000
+ZKONG_POLL_INTERVAL_MS=1000
+POSTGRES_DB=clover_zkong
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong
+```
 
 ## Known limitations (POC)
 

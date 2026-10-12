@@ -605,30 +605,14 @@ cloverPosDemo/
 Reflects `.env.example` as actually written (see file for authoritative source).
 
 ```env
-# Clover
-CLOVER_API_BASE=https://sandbox.dev.clover.com/v3/merchants
-CLOVER_MERCHANT_ID=
-CLOVER_CLIENT_ID=
-
-# Zkong
-ZKONG_API_BASE=https://esl-eu.zkong.com
-ZKONG_ACCOUNT=
-ZKONG_PASSWORD=
-ZKONG_MERCHANT_ID=
-ZKONG_AGENCY_ID=
-
-# App
 PORT=3000
-# The "Clover Auth Code" from Your Apps > App Settings > Webhooks in the
-# Clover Developer Dashboard. Required for webhook requests to be accepted.
-CLOVER_AUTH_CODE=
-ZKONG_API_BASE=https://esl-eu.zkong.com
-ZKONG_ACCOUNT=
-ZKONG_PASSWORD=
-ZKONG_MERCHANT_ID=
-ZKONG_AGENCY_ID=
-ZKONG_STORE_ID=
 ZKONG_POLL_INTERVAL_MS=1000
+
+# Database — Postgres
+POSTGRES_DB=clover_zkong
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DATABASE_URL=postgres://postgres:postgres@db:5432/clover_zkong
 ```
 
 ### Dependencies
