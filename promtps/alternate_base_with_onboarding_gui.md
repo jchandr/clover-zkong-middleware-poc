@@ -1,75 +1,298 @@
-we will diverting to a new path of our application which will introduce UI to onboard a user. let the UI be on react typescript vite and tailwind css
+# POS to Zkong Integration: Architecture & Onboarding Specification
 
-the user will represent a business. ideally a grocery store or a super market.
+**Reference File:** `alternate_base_with_onboarding_gui_2.md`
 
-the user could have any POS for his business. can be Square, Toast, Clover, or Lightspeed. so, the idea is the user should be able to bring any pos software that can be integrated to their zkong application.
+---
 
-so the .env of our application should contain only these values. all other configurations should be in db tables, which will be dynamically set by the user and read by our middleware.
----.env file start---
+## 1. Tech Stack & Goal
+
+We are introducing a UI to onboard a business (ideally a grocery store or supermarket) that can bring any POS software (Square, Toast, Clover, or Lightspeed) and integrate it with their Zkong application.
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React, TypeScript, Vite, Tailwind CSS |
+| **Goal** | Universal POS ↔ Zkong integration with configurable field mapping & sync automation |
+
+---
+
+## 2. Infrastructure & Database
+
+### 2.1 Environment Variables
+
+The `.env` file should contain **only** the following values. All other configurations are stored in the database, set dynamically by the user, and read by the middleware.
+
+```env
 PORT=
 ZKONG_POLL_INTERVAL_MS=
 POSTGRES_DB=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
 DATABASE_URL=
----.env file end---
+```
 
-lets not care about other POS, let just care about Clover for now.
+### 2.2 Database Schema: `integrations` Table
 
-we will need a new db table called "integrations". this db table to keep track the user of certain email and business name, opted which POS system. this record will also hold the configuration details for the POS and zkong. the columns for this integrations be
----start of table structure---
-1. ID (primary key)
-2. integrationId - (random and unique UUID for this integration. this will be used by external application to refer this integration)
-3. registeringBusinessName
-4. registeringBusinessEmail
-5. selectedPos (can be any of Square, Toast, Clover, or Lightspeed)
-6. posConfiguration
-7. zkongConfiguration
-8. status (status can have the following numeric keys as value which should be interpreted to the values)
-     0 - PENDING SETUP
-     1 - CONFIG VERIFIED
-     2 - PAUSED
-     3 - LIVE
-     -1 - DELETED
-9. createdAt
-10. updatedAt
----end of table structure---
+A new `integrations` table tracks the user, their opted POS system, configuration details, and mapping rules.
 
-also by current implementation we had a generic webhook url https://clokong.fullform.one/webhooks/clover . but from now on, we will have the webhook like https://clokong.fullform.one/webhooks/<dynamic-value>. the dynamic value is simply the integrationId in the above table. so that when this webhook call is received, by looking at the table we will be able make decision on which pos to target and which zkong to target.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | Primary Key | Auto-incrementing ID |
+| `integration_id` | UUID (unique) | Random UUID for this integration. Used by external applications to refer to this integration |
+| `registering_business_name` | String | Business name entered by user |
+| `registering_business_email` | String | Business email entered by user |
+| `selected_pos` | Enum | Selected POS: `square`, `toast`, `clover`, `lightspeed` |
+| `pos_configuration` | JSON | POS API keys, base URLs, auth tokens |
+| `zkong_configuration` | JSON | Zkong credentials |
+| `field_mappings` | JSON | Dynamic mapping between POS fields and Zkong fields |
+| `sync_rules` | JSON | User-defined automation & bi-directional sync rules |
+| `status` | Integer | `0 = PENDING SETUP`, `1 = CONFIG VERIFIED`, `2 = PAUSED`, `3 = LIVE`, `-1 = DELETED` |
+| `created_at` | Timestamp | Record creation time |
+| `updated_at` | Timestamp | Last update time |
 
-so the process of on boarding will look like this. let the url be /onboarding
+---
 
-the onboarding page will have a stepper like view.
-step 1:
-    1. get business name
-    2. get business email
+### 2.3 Backend Architecture: Adapter Pattern & Rule Engine
 
-step 2:
-    give option to select from available POS optiions. display the options Square, Toast, Clover, or Lightspeed. let clover be only enabled option for now. 
-   
-after selecting, and when the user clicks next, make an api call to the backend (create this api in backend). this api should create a record in integrations table. lets call this DB as integrations. populate the user entered business name, business email, selected pos and an auto generated integration from the UI to the table using the api. the response of this api should be the integrationId. this integrationId will be used in the later steps to make api calls from the UI for onboarding.
+To support any POS system without altering core Zkong logic:
 
-step 3:
-    get the selected POS environment details (in our case the default available option will be clover). the POS environment details for clover are 
-    CLOVER_API_BASE= (let https://sandbox.dev.clover.com/v3/merchants be the default value for this clover configuration. can be changed by the user) (strip the trailing slash if the user adds it in this input)
-    CLOVER_MERCHANT_ID= 
-    CLOVER_CLIENT_APP_ID=
-    CLOVER_API_TOKEN=
-    CLOVER_AUTH_CODE= (immutable field just to display . also have a refresh button next to the input, to get the latest config value from the db.)
+**POS Adapters** — Files specific to each POS (e.g., `CloverAdapter.ts`) that:
+- Translate incoming webhooks into a standard data model
+- Handle POS-specific API calls
 
-    ask these values from the user. let the labels be not exacly the same. use realistic label names.
-    the clover auth code is received when a the clover sandbox applicaton makes a test webhook call to the url that is generated in the step 2. so display that webhook url and ask the user to give this url as webhook url to the clover sandbox application and initiate a test. this should automatically make a webhook call with an authcode, and this auth code should be saved in the db under the column posConfiguration in a json object in a field called cloverAuthToken. after that ask the user to refresh the clover auth code to get it from db. now with auth code from webhoook available, ask the user to copy this authcode from our application and to paste this the clover sandbox application.
+**Rule Engine** — A core processor that:
+- Reads `sync_rules` and `field_mappings` JSON from the database
+- Runs calculations based on trigger events
+- Dispatches actions to Zkong and/or back to the POS
 
-    the above details mentioned in step 3 is just for clover pos. config flow for other pos might differ and we dont know anything about them yet. do not make any assumptions. ask me any question if any.
+---
 
-step 4:
-    get the zkong environmetn details.
-    ZKONG_ACCOUNT=VensweGlobalLLC
-    ZKONG_PASSWORD=zkong@123
-    ZKONG_MERCHANT_ID=1786427294219 
-    ZKONG_AGENCY_ID=1558577702698
-    ZKONG_STORE_ID=1607566698661
+### 2.4 Dynamic Webhook Routing
 
-    we had some trouble finding this values. for each field, have a tooltip or a information popover on how to find them 
+Instead of a generic webhook URL (`https://clokong.fullform.one/webhooks/clover`), the application uses **dynamic routing**:
 
-step 5: this is the main step 
+```
+https://clokong.fullform.one/webhooks/<integrationId>
+```
+
+- `<integrationId>` is the `integration_id` from the `integrations` table
+- On webhook receipt, the middleware queries the `integrations` table to determine:
+  - Which POS adapter to invoke
+  - Which Zkong account to update
+
+---
+
+## 3. Onboarding Workflow (GUI Stepper)
+
+The onboarding URL is `/onboarding`. The page features a **sequential stepper view**.
+
+---
+
+### Step 1: Business Details
+
+- Business Name (text input)
+- Business Email (text input)
+
+---
+
+### Step 2: POS Selection
+
+- Display options: Square, Toast, Clover, Lightspeed
+- **For now:** Only Clover is enabled
+- On "Next": API call creates record in `integrations` table
+- Populates: business name, email, selected POS, auto-generated `integration_id`
+- API response returns `integration_id` (used in later steps)
+- Status → `0` (PENDING SETUP)
+
+---
+
+### Step 3: Clover Configuration & Validation
+
+Collect POS environment details using realistic label names:
+
+| Field | Description |
+|-------|-------------|
+| **Clover API Base URL** | Default: `https://sandbox.dev.clover.com/v3/merchants` (trailing slash stripped) |
+| **Clover Merchant ID** | From Clover Dashboard |
+| **Clover Client App ID** | From Clover Developer Dashboard |
+| **Clover API Token** | From Clover Test Merchants → API Token |
+| **Clover Auth Code** | Immutable display field + "Refresh" button to fetch latest from DB |
+
+#### Auth Code Webhook Flow
+
+1. Display the dynamic webhook URL generated in Step 2: `https://clokong.fullform.one/webhooks/<integrationId>`
+2. Instruct user to provide this URL as the webhook URL in their Clover sandbox application and initiate a test
+3. The test webhook automatically sends an auth code
+4. Backend saves this auth code under `pos_configuration` JSON field `clover_auth_token`
+4. User clicks UI "Refresh" button to fetch the auth code from the DB
+5. User copies the auth code from our application and pastes it into the Clover sandbox application to finalize
+
+#### Validation Checkpoint
+
+Once completed, the backend validates the Clover connection.
+> **Note:** The above is Clover-specific. Architecture assumes no assumptions for future POS integrations.
+
+---
+
+### Step 4: Zkong Configuration & Schema Fetching
+
+Collect Zkong environment details with tooltips/popovers explaining how to find each in the Zkong dashboard:
+
+| Field | Example |
+|-------|---------|
+| **ZKONG_ACCOUNT** | `VensweGlobalLLC` |
+| **ZKONG_PASSWORD** | `zkong@123` |
+| **ZKONG_MERCHANT_ID** | `1786427294219` |
+| **ZKONG_AGENCY_ID** | `1558577702698` |
+| **ZKONG_STORE_ID** | `1607566698661` |
+
+#### Validation & Schema Pull
+
+- User clicks **"Verify Zkong"**
+- Backend attempts authentication using provided credentials
+- If both POS and Zkong validations succeed → status → `1` (CONFIG VERIFIED)
+- Concurrently, backend dynamically fetches fields supported by this user's Zkong store/template (e.g., `sellingPrice`, `originalPrice`, `productName`, `barcode`) and passes them to the frontend for Step 5
+
+---
+
+### Step 5: Field Mapping & Sync Automation (The Rule Engine)
+
+Dictates how data flows between POS and Zkong. UI displays dynamically fetched fields from Step 4.
+
+#### Part A: Static Field Mapping
+
+**Dual-column layout:**
+
+| Left Column (Zkong) | Right Column (POS) |
+|---------------------|---------------------|
+| Dynamically populated Zkong fields from Step 4 | Dropdowns populated by POS schema (e.g., Clover raw fields like `price`, `vat_percentage`, system-calculated macros like `calculated_final_price`) |
+
+- User maps POS fields to Zkong fields (e.g., Clover's `calculated_final_price` → Zkong's `sellingPrice` or `originalPrice`)
+- Selection saved to `field_mappings` JSON column
+
+#### Part B: Automation & Sync Rules
+
+Interface for defining dynamic **If-This-Then-That (IFTTT)** logic based on POS webhook events.
+
+| Component | Options |
+|-----------|---------|
+| **Trigger (IF)** | Select a POS event (e.g., "If VAT Percent changes", "If Discount changes") |
+| **Action (THEN)** | Configure system response: |
+
+**Action Types:**
+- **Action 1 (Unidirectional):** Recalculate Final Price using Rule Engine, then push update to Zkong
+- **Action 2 (Bi-directional):** Write newly calculated Final Price back to POS (via POS Adapter)
+
+- Configuration saved to `sync_rules` JSON column
+
+#### Completion
+
+Upon saving:
+- Onboarding complete
+- Database status → `3` (LIVE)
+
+---
+
+## 4. Execution Flow (Webhook Lifecycle)
+
+When the system is **LIVE (status = 3)**, runtime execution follows:
+
+```mermaid
+graph TD
+    A[Clover fires webhook to /webhooks/{integrationId}] --> B[Middleware fetches record, verifies LIVE, loads mappings & rules]
+    B --> C[Payload passes to CloverAdapter.ts for normalization]
+    C --> D[Rule Engine evaluates payload against sync_rules]
+    D --> E[Calculate new price]
+    E --> F[Format JSON for Zkong using field_mappings]
+    F --> G[Push to Zkong via Zkong Service]
+    D --> H{Sync Rule: Bi-directional?}
+    H -->|Yes| I[Trigger Adapter.updateItemField() to push price back to Clover]
+    H -->|No| J[Done]
+```
+
+### Detailed Steps
+
+1. **Event:** Clover fires a webhook to `/webhooks/<integrationId>` (e.g., VAT percentage changes)
+2. **Lookup:** Middleware fetches the `integrations` record using the ID, verifies status is `LIVE`, loads `field_mappings` and `sync_rules`
+3. **Adapt:** Payload passes to `CloverAdapter.ts` to normalize the data
+4. **Process:** Rule Engine evaluates normalized payload against `sync_rules`, calculates new price based on VAT change trigger
+5. **Execute Zkong Sync:** Rule Engine uses `field_mappings` to format exact JSON required by Zkong, pushes via Zkong Service
+6. **Execute POS Write-back:** If configured in `sync_rules`, Rule Engine triggers Adapter's `updateItemField()` method to push new price back to Clover
+
+---
+
+## Summary of Key Files (Proposed Structure)
+
+---
+
+## 5. Integrations Management Page
+
+A dedicated admin page at `/integrations` to list all users and their integrations with full lifecycle controls.
+
+### 5.1 Page Layout
+
+| Column | Description |
+|--------|-------------|
+| **Business Name** | `registering_business_name` |
+| **Business Email** | `registering_business_email` |
+| **POS** | `selected_pos` badge |
+| **Integration ID** | `integration_id` (copyable) |
+| **Status** | Badge with color: `0=PENDING`, `1=VERIFIED`, `2=PAUSED`, `3=LIVE`, `-1=DELETED` |
+| **Created** | `created_at` |
+| **Actions** | Dropdown/menu with state transitions |
+
+---
+
+### 5.2 State Transitions (Dropdown Actions)
+
+| Current Status | Allowed Actions | Target Status |
+|----------------|-----------------|---------------|
+| `0` PENDING SETUP | Verify Config | `1` CONFIG VERIFIED |
+| `1` CONFIG VERIFIED | Go Live | `3` LIVE |
+| `2` PAUSED | Resume / Go Live | `3` LIVE |
+| `3` LIVE | Pause | `2` PAUSED |
+| `3` LIVE | Delete (Soft) | `-1` DELETED |
+| `2` PAUSED | Delete (Soft) | `-1` DELETED |
+| `-1` DELETED | Restore | `2` PAUSED |
+
+> **Rules:**
+> - "Go Live" only allowed from `CONFIG VERIFIED` or `PAUSED`
+> - "Pause" only allowed from `LIVE`
+> - "Delete" is **soft delete** (status = `-1`), preserves all config for audit/restore
+> - "Restore" from `DELETED` goes to `PAUSED` (requires re-verification before going live)
+
+---
+
+### 5.3 UI Behavior
+
+- **Table** with pagination, search (by business name, email, integration_id), filter by POS type and status
+- **Action column** shows a dropdown with only valid transitions for the current status
+- **Confirmation modal** for destructive actions (Pause, Delete) showing impact summary
+- **Audit trail** link per row → opens `sync_log` filtered by this integration
+
+---
+
+### 5.4 Backend Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/integrations` | List with pagination, search, filters |
+| `GET` | `/api/integrations/:id` | Get single integration detail |
+| `PATCH` | `/api/integrations/:id/status` | Transition status (body: `{ action: "pause" \| "live" \| "pause" \| "delete" \| "restore" }`) |
+| `DELETE` | `/api/integrations/:id` | Soft delete (alias for status=DELETED) |
+
+### 5.5 Proposed File Additions
+
+```
+src/
+├── api/
+│   └── integrations/
+│       ├── routes.ts
+│       ├── controller.ts
+│       └── validation.ts
+├── db/
+│   └── repositories/
+│       └── IntegrationsRepo.ts      # Add: findAll, findById, updateStatus
+└── onboarding/
+    └── steps/
+        └── step6-management.ts      # (Optional) Admin-only step in onboarding flow
+```
