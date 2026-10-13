@@ -31,15 +31,21 @@ export class RuleEngine {
       if (!rule || !rule.trigger) continue;
 
       const trigger = rule.trigger.toLowerCase();
-      if (trigger.includes("vat") && item.vatPercentage && item.vatPercentage > 0) {
+      if (trigger === "vat_change" && item.vatPercentage && item.vatPercentage > 0) {
         effectivePrice = item.calculatedFinalPrice ?? Math.round(item.price * (1 + item.vatPercentage / 100));
         actionsTaken.push(`Applied rule '${rule.trigger}': Final price ${effectivePrice}`);
         if (rule.actionType === "bidirectional") {
           bidirectionalRequired = true;
         }
-      } else if (trigger.includes("discount") && item.discountPercentage && item.discountPercentage > 0) {
+      } else if (trigger === "discount_applied" && item.discountPercentage && item.discountPercentage > 0) {
         effectivePrice = Math.round(item.price * (1 - item.discountPercentage / 100));
         actionsTaken.push(`Applied rule '${rule.trigger}': Discounted price ${effectivePrice}`);
+        if (rule.actionType === "bidirectional") {
+          bidirectionalRequired = true;
+        }
+      } else if (trigger === "price_change") {
+        effectivePrice = item.price;
+        actionsTaken.push(`Applied rule '${rule.trigger}': Price synced to ${effectivePrice}`);
         if (rule.actionType === "bidirectional") {
           bidirectionalRequired = true;
         }

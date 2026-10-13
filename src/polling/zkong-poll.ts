@@ -1,7 +1,7 @@
 import axios from "axios";
 import { zkongClient } from "../services/zkong/client";
 import { updateCloverItem } from "../services/clover/client";
-import { batchImportToZkong } from "../services/zkong/items";
+import { batchImportToZkongWithConfig } from "../services/zkong/items";
 import { findByBarcode, upsertItemMap, ItemMapRow } from "../db/models/item-map";
 import { ensureDefaultStore } from "../db/models/store";
 import { logSync } from "../db/models/sync-log";
@@ -9,6 +9,7 @@ import { config } from "../config/env";
 import { getPool } from "../db/connection";
 import { IntegrationsRepo, IntegrationRow, IntegrationStatus, ZkongConfig } from "../db/models/integration";
 import { encryptPassword } from "../utils/rsa";
+import { PosAdapterRegistry } from "../adapters";
 
 export interface ZkongApiItem {
   id?: number | string;
@@ -211,21 +212,20 @@ export async function pollIntegrationOnce(
       );
 
       try {
-        // Update Clover price using integration's POS config
-        const posConfig = integration.pos_configuration;
-        const cloverMerchantId = (integration.pos_configuration as { merchantId?: string }).merchantId;
+        // Update Clover price using integration's POS config (via CloverAdapter)
+        const posConfig = integration.pos_configuration as { merchantId?: string; apiToken?: string; apiBaseUrl?: string };
+        const cloverMerchantId = posConfig.merchantId;
         if (!cloverMerchantId) {
           console.warn(
             `[poller] Integration ${integration.integration_id} missing Clover merchantId, skipping Clover update`
           );
         } else {
-          await updateCloverItem(cloverMerchantId, existing.clover_item_id, {
-            price: saleCents,
-          });
+          const adapter = PosAdapterRegistry.get(integration.selected_pos);
+          await adapter.updateItemField(existing.clover_item_id, "price", saleCents, posConfig);
         }
 
         // Update Zkong main price (售价) field on tag
-        await batchImportToZkong(
+        await batchImportToZkongWithConfig(
           [
             {
               barCode: item.barCode,
@@ -242,7 +242,8 @@ export async function pollIntegrationOnce(
               custFeature5: item.custFeature5,
             },
           ],
-          { storeId: (integration.zkong_configuration as ZkongConfig).storeId }
+          zkConfig,
+          { storeId: zkConfig.storeId }
         );
 
         await upsertItemMap({
@@ -452,7 +453,11 @@ export function startZkongPoller(intervalMs: number = 60000): void {
 
     if (!debuggedOnce) {
       debuggedOnce = true;
-      await debugMappedZkongItems();
+      try {
+        await debugMappedZkongItems();
+      } catch (err) {
+        console.error("[poller] Debug dump error:", (err as Error).message);
+      }
     }
 
     // Promo strategy visibility (rate-limited to once/minute regardless of

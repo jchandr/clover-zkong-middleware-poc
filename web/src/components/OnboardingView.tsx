@@ -58,12 +58,12 @@ export const OnboardingView: React.FC = () => {
 
   const [syncRules] = useState<Array<{ trigger: string; actionType: 'unidirectional' | 'bidirectional'; description: string }>>([
     {
-      trigger: 'If VAT / Tax Percent changes in POS',
+      trigger: 'vat_change',
       actionType: 'bidirectional',
       description: 'Recalculate final gross price and sync to Zkong tag, then update POS price',
     },
     {
-      trigger: 'If Discount % is applied in Zkong',
+      trigger: 'discount_applied',
       actionType: 'unidirectional',
       description: 'Mirror sale price to POS without overwriting base catalog items',
     },

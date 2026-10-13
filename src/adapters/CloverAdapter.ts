@@ -91,16 +91,35 @@ export class CloverAdapter implements IPosAdapter {
       throw new Error("Clover adapter: merchantId and apiToken are required");
     }
 
-    const url = `${apiBase}/${merchantId}/items/${itemId}?expand=taxRates`;
-    const res = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        Accept: "application/json",
-      },
-      timeout: 10000,
-    });
+    // Try with expand=taxRates first, fall back if 403 (no permission)
+    let item;
+    try {
+      const url = `${apiBase}/${merchantId}/items/${itemId}?expand=taxRates`;
+      const res = await axios.get(url, {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          Accept: "application/json",
+        },
+        timeout: 10000,
+      });
+      item = res.data;
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        console.warn(`[clover-adapter] expand=taxRates forbidden, retrying without expand for ${itemId}`);
+        const url = `${apiBase}/${merchantId}/items/${itemId}`;
+        const res = await axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            Accept: "application/json",
+          },
+          timeout: 10000,
+        });
+        item = res.data;
+      } else {
+        throw err;
+      }
+    }
 
-    const item = res.data;
     const price = typeof item.price === "number" ? item.price : 0;
 
     // Calculate effective VAT rate if present

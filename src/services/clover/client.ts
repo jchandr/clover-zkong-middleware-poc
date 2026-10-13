@@ -33,17 +33,33 @@ export async function getCloverItem(
   itemId: string
 ): Promise<CloverItem> {
   const base = config.clover.apiBase.replace(/\/$/, "");
-  const url = `${base}/${merchantId}/items/${itemId}?expand=itemStock`;
-
-  const res = await axios.get<CloverItem>(url, {
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-      Accept: "application/json",
-    },
-    timeout: 10_000,
-  });
-
-  return res.data;
+  
+  // Try with expand=itemStock first, fall back if 403 (no permission)
+  try {
+    const url = `${base}/${merchantId}/items/${itemId}?expand=itemStock`;
+    const res = await axios.get<CloverItem>(url, {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        Accept: "application/json",
+      },
+      timeout: 10_000,
+    });
+    return res.data;
+  } catch (err: any) {
+    if (err.response?.status === 403) {
+      console.warn(`[clover-client] expand=itemStock forbidden, retrying without expand for ${itemId}`);
+      const url = `${base}/${merchantId}/items/${itemId}`;
+      const res = await axios.get<CloverItem>(url, {
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          Accept: "application/json",
+        },
+        timeout: 10_000,
+      });
+      return res.data;
+    }
+    throw err;
+  }
 }
 
 /**

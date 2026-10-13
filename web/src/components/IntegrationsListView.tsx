@@ -9,7 +9,10 @@ import {
   Plus, 
   Copy, 
   Check, 
-  AlertTriangle 
+  AlertTriangle,
+  Edit2,
+  Settings,
+  X
 } from 'lucide-react';
 import type { Integration } from '../types';
 
@@ -27,6 +30,49 @@ export const IntegrationsListView: React.FC = () => {
     integration: Integration;
     action: 'pause' | 'live' | 'delete' | 'restore';
   } | null>(null);
+
+// Edit modal state
+  const [editModal, setEditModal] = useState<{
+    integration: Integration;
+  } | null>(null);
+
+  const [editForm, setEditForm] = useState<{
+    field_mappings: Record<string, string>;
+    sync_rules: Array<{ trigger: string; actionType: 'unidirectional' | 'bidirectional'; description?: string }>;
+    registering_business_name: string;
+    registering_business_email: string;
+    pos_configuration: Record<string, unknown>;
+    zkong_configuration: Record<string, unknown>;
+  }>({
+    field_mappings: {},
+    sync_rules: [],
+    registering_business_name: '',
+    registering_business_email: '',
+    pos_configuration: {},
+    zkong_configuration: {},
+  });
+
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [newMapping, setNewMapping] = useState({ zkKey: '', posKey: '' });
+
+  // Common Zkong field options
+  const zkongFieldOptions = [
+    'barCode',
+    'itemTitle',
+    'price',
+    'originalPrice',
+    'memberPrice',
+    'custFeature1',
+    'custFeature2',
+    'custFeature3',
+    'custFeature4',
+    'custFeature5',
+    'attrCategory',
+    'attrName',
+    'productCode',
+    'productSku',
+  ];
 
   const fetchIntegrations = async () => {
     setLoading(true);
@@ -76,6 +122,41 @@ export const IntegrationsListView: React.FC = () => {
       await fetchIntegrations();
     } catch (err) {
       setActionError((err as Error).message);
+    }
+  };
+
+  const openEditModal = (integration: Integration) => {
+    setEditForm({
+      field_mappings: integration.field_mappings || {},
+      sync_rules: integration.sync_rules || [],
+      registering_business_name: integration.registering_business_name,
+      registering_business_email: integration.registering_business_email,
+      pos_configuration: integration.pos_configuration || {},
+      zkong_configuration: integration.zkong_configuration || {},
+    });
+    setEditError(null);
+    setEditModal({ integration });
+  };
+
+  const handleEditSave = async () => {
+    if (!editModal) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/integrations/${editModal.integration.integration_id}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update configuration');
+
+      setEditModal(null);
+      await fetchIntegrations();
+    } catch (err) {
+      setEditError((err as Error).message);
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -244,6 +325,16 @@ export const IntegrationsListView: React.FC = () => {
                           </button>
                         )}
 
+                        {item.status !== 3 && (
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Configuration"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+
                         {item.status === 2 && (
                           <button
                             onClick={() => setConfirmModal({ integration: item, action: 'live' })}
@@ -331,6 +422,296 @@ export const IntegrationsListView: React.FC = () => {
                 }`}
               >
                 Confirm {confirmModal.action.toUpperCase()}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Configuration Modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3 text-indigo-600">
+                <Settings className="w-6 h-6" />
+                <h3 className="text-lg font-bold text-slate-900">Edit Integration Configuration</h3>
+              </div>
+              <button
+                onClick={() => setEditModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600">
+              Editing <strong>{editModal.integration.registering_business_name}</strong> ({editModal.integration.selected_pos.toUpperCase()})
+              <br />
+              <span className="text-amber-700 font-medium">Status: {editModal.integration.status === 3 ? 'LIVE' : editModal.integration.status === 2 ? 'PAUSED' : editModal.integration.status === 1 ? 'CONFIG VERIFIED' : 'PENDING SETUP'}</span>
+              {editModal.integration.status === 3 && ' — Must pause to edit'}
+            </p>
+
+            {editError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center justify-between">
+                <span>{editError}</span>
+                <button onClick={() => setEditError(null)} className="text-rose-600 hover:text-rose-800 font-bold ml-4">✕</button>
+              </div>
+            )}
+
+            {/* Field Mappings */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900">Field Mappings</h4>
+              <p className="text-xs text-slate-500 mb-3">Map Zkong fields to POS item attributes. Key = Zkong field, Value = POS field.</p>
+              <div className="bg-slate-50 rounded-xl p-4 max-h-64 overflow-y-auto">
+                <div className="space-y-2">
+                  {Object.entries(editForm.field_mappings).map(([zkKey, posKey]) => (
+                    <div key={zkKey} className="flex items-center space-x-2">
+                      <select
+                        value={zkKey}
+                        onChange={(e) => {
+                          const newKey = e.target.value;
+                          if (newKey === zkKey) return;
+                          setEditForm(prev => {
+                            const next = { ...prev.field_mappings };
+                            next[newKey] = next[zkKey];
+                            delete next[zkKey];
+                            return { ...prev, field_mappings: next };
+                          });
+                        }}
+                        className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono text-slate-700"
+                      >
+                        {!zkongFieldOptions.includes(zkKey) && <option value={zkKey}>{zkKey}</option>}
+                        {zkongFieldOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      <span className="text-slate-400">→</span>
+                      <select
+                        value={posKey}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          field_mappings: { ...prev.field_mappings, [zkKey]: e.target.value }
+                        }))}
+                        className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                      >
+                        {['name', 'price', 'sku', 'code', 'calculated_final_price', 'vat_percentage', 'discountPercentage', 'discountNumber', 'originalPrice'].map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setEditForm(prev => {
+                          const next = { ...prev.field_mappings };
+                          delete next[zkKey];
+                          return { ...prev, field_mappings: next };
+                        })}
+                        className="text-rose-500 hover:text-rose-700 cursor-pointer"
+                        title="Remove mapping"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center space-x-2 pt-2">
+                    <select
+                      value={newMapping.zkKey}
+                      onChange={(e) => setNewMapping(prev => ({ ...prev, zkKey: e.target.value }))}
+                      className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                    >
+                      <option value="">Zkong field...</option>
+                      {zkongFieldOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <span className="text-slate-400">→</span>
+                    <select
+                      value={newMapping.posKey}
+                      onChange={(e) => setNewMapping(prev => ({ ...prev, posKey: e.target.value }))}
+                      className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                    >
+                      <option value="">POS field...</option>
+                      {['name', 'price', 'sku', 'code', 'calculated_final_price', 'vat_percentage', 'discountPercentage', 'discountNumber', 'originalPrice'].map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (newMapping.zkKey && newMapping.posKey) {
+                          setEditForm(prev => ({
+                            ...prev,
+                            field_mappings: { ...prev.field_mappings, [newMapping.zkKey]: newMapping.posKey }
+                          }));
+                          setNewMapping({ zkKey: '', posKey: '' });
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sync Rules */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900">Sync Rules</h4>
+              <p className="text-xs text-slate-500 mb-3">Define triggers and actions for bidirectional sync.</p>
+              <div className="bg-slate-50 rounded-xl p-4">
+                <div className="space-y-2">
+                  {editForm.sync_rules.map((rule, idx) => (
+                    <div key={idx} className="space-y-2 p-2 bg-white rounded-lg border border-slate-200">
+                      <div className="flex items-center space-x-2">
+                        <select
+                          value={rule.trigger}
+                          onChange={(e) => setEditForm(prev => ({
+                            ...prev,
+                            sync_rules: prev.sync_rules.map((r, i) => i === idx ? { ...r, trigger: e.target.value } : r)
+                          }))}
+                          className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                        >
+                          <option value="vat_change">VAT / Tax % change</option>
+                          <option value="discount_applied">Discount % applied</option>
+                          <option value="price_change">Price change</option>
+                        </select>
+                        <select
+                          value={rule.actionType}
+                          onChange={(e) => setEditForm(prev => ({
+                            ...prev,
+                            sync_rules: prev.sync_rules.map((r, i) => i === idx ? { ...r, actionType: e.target.value as 'unidirectional' | 'bidirectional' } : r)
+                          }))}
+                          className="px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                        >
+                          <option value="unidirectional">Unidirectional</option>
+                          <option value="bidirectional">Bidirectional</option>
+                        </select>
+                        <button
+                          onClick={() => setEditForm(prev => ({
+                            ...prev,
+                            sync_rules: prev.sync_rules.filter((_, i) => i !== idx)
+                          }))}
+                          className="text-rose-500 hover:text-rose-700 cursor-pointer"
+                          title="Remove rule"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={rule.description}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          sync_rules: prev.sync_rules.map((r, i) => i === idx ? { ...r, description: e.target.value } : r)
+                        }))}
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                        placeholder="Description"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setEditForm(prev => ({
+                      ...prev,
+                      sync_rules: [...prev.sync_rules, { trigger: '', actionType: 'unidirectional', description: '' }]
+                    }))}
+                    className="w-full px-3 py-2 text-xs border-2 border-dashed border-slate-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 text-slate-600 cursor-pointer"
+                  >
+                    + Add Sync Rule
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Business Information */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900">Business Information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Business Name</label>
+                  <input
+                    type="text"
+                    value={editForm.registering_business_name}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, registering_business_name: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Business Email</label>
+                  <input
+                    type="email"
+                    value={editForm.registering_business_email}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, registering_business_email: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* POS Configuration (read-only fields shown for reference) */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900">POS Configuration (read-only fields fixed at onboarding)</h4>
+              <p className="text-xs text-slate-500 mb-3">POS type cannot be changed. Other fields can be updated.</p>
+              <div className="bg-slate-50 rounded-xl p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(editForm.pos_configuration).map(([key, value]) => {
+                    const isReadOnly = key === 'posType' || key === 'merchantId';
+                    return (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">{key} {isReadOnly && <span className="text-amber-600 ml-1">(fixed)</span>}</label>
+                        <input
+                          type="text"
+                          value={String(value)}
+                          onChange={isReadOnly ? undefined : (e) => setEditForm(prev => ({
+                            ...prev,
+                            pos_configuration: { ...prev.pos_configuration, [key]: e.target.value }
+                          }))}
+                          readOnly={isReadOnly}
+                          className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Zkong Configuration */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900">Zkong Configuration</h4>
+              <div className="bg-slate-50 rounded-xl p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Object.entries(editForm.zkong_configuration).map(([key, value]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">{key}</label>
+                      <input
+                        type="text"
+                        value={String(value)}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          zkong_configuration: { ...prev.zkong_configuration, [key]: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 flex justify-end space-x-3 border-t border-slate-200">
+              <button
+                onClick={() => setEditModal(null)}
+                className="px-4 py-2 border border-slate-300 rounded-xl text-sm font-medium hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50"
+              >
+                {editSaving ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
           </div>

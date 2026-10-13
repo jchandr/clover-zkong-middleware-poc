@@ -147,3 +147,58 @@ integrationsManagementRouter.delete("/:integrationId", async (req: Request, res:
     res.status(500).json({ error: (err as Error).message });
   }
 });
+
+// Update integration configuration (field mappings, sync rules, etc.)
+// Only allowed when integration is NOT LIVE
+integrationsManagementRouter.patch("/:integrationId/config", async (req: Request, res: Response) => {
+  try {
+    const integrationId = Array.isArray(req.params.integrationId)
+      ? req.params.integrationId[0]
+      : req.params.integrationId;
+
+    const { field_mappings, sync_rules, pos_configuration, zkong_configuration, registering_business_name, registering_business_email } = req.body;
+
+    const integration = await IntegrationsRepo.findByIntegrationId(integrationId);
+    if (!integration) {
+      res.status(404).json({ error: "Integration not found" });
+      return;
+    }
+
+    // Prevent editing LIVE integrations
+    if (integration.status === 3 /* LIVE */) {
+      res.status(400).json({
+        error: "Cannot edit LIVE integration. Please pause the integration first.",
+        currentStatus: integration.status,
+        requiredAction: "pause"
+      });
+      return;
+    }
+
+    // POS type cannot be changed after onboarding
+    if (pos_configuration && pos_configuration.posType && pos_configuration.posType !== integration.selected_pos) {
+      res.status(400).json({
+        error: "POS type cannot be changed after onboarding. It is fixed during initial setup."
+      });
+      return;
+    }
+
+    const updateData: Partial<typeof integration> = {};
+
+    if (field_mappings !== undefined) updateData.field_mappings = field_mappings;
+    if (sync_rules !== undefined) updateData.sync_rules = sync_rules;
+    if (pos_configuration !== undefined) updateData.pos_configuration = { ...integration.pos_configuration, ...pos_configuration };
+    if (zkong_configuration !== undefined) updateData.zkong_configuration = { ...integration.zkong_configuration, ...zkong_configuration };
+    if (registering_business_name !== undefined) updateData.registering_business_name = registering_business_name;
+    if (registering_business_email !== undefined) updateData.registering_business_email = registering_business_email;
+
+    const updated = await IntegrationsRepo.update(integrationId, updateData);
+
+    res.status(200).json({
+      success: true,
+      message: "Integration configuration updated",
+      integration: updated,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
